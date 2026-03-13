@@ -98,9 +98,9 @@ def _parse_trial(study: dict) -> Optional[Trial]:
         phase = phases[0] if phases else None
 
         locations = [
-            loc.get("facility", {}).get("address", {}).get("city", "")
+            loc.get("city", "")
             for loc in contacts_mod.get("locations", [])
-            if loc.get("facility", {}).get("address", {}).get("city")
+            if loc.get("city")
         ]
 
         if not nct_id:
