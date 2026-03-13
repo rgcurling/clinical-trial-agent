@@ -33,12 +33,11 @@ class TestRegexExtractor(unittest.TestCase):
         self.assertIsNone(profile.age)
 
 
-class TestExtractPatientProfileLLMFallback(unittest.TestCase):
-    """Test LLM fallback path when scispaCy is unavailable."""
+class TestExtractPatientProfile(unittest.TestCase):
+    """Test extract_patient_profile (LLM-primary path)."""
 
-    @patch("pipeline.extractor._load_spacy", return_value=False)
     @patch("pipeline.extractor._extract_via_llm")
-    def test_llm_fallback_called(self, mock_llm, mock_spacy):
+    def test_llm_called(self, mock_llm):
         mock_llm.return_value = {
             "conditions": ["lung cancer"],
             "stage": "Stage IIIB",

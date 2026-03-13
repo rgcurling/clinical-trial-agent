@@ -6,8 +6,7 @@ TrialMatch AI converts a free-text patient profile into a ranked list of recruit
 
 ```bash
 pip install -r requirements.txt
-python -m spacy download en_core_sci_md   # optional; falls back to LLM extraction
-cp .env.example .env                      # add ANTHROPIC_API_KEY
+cp .env .env.example   # add ANTHROPIC_API_KEY
 ```
 
 ## Usage
@@ -33,7 +32,7 @@ python main.py --patient-file data/sample_patients/patient_01.txt --compare-mode
 
 | Stage | Module | Description |
 |-------|--------|-------------|
-| 1 | pipeline/extractor.py | Entity extraction from free text (scispaCy + LLM fallback) |
+| 1 | pipeline/extractor.py | Entity extraction from free text via Claude LLM |
 | 2 | pipeline/retriever.py | ClinicalTrials.gov API v2 with disk cache and retry |
 | 3 | pipeline/matcher.py | Per-criterion eligibility matching via Claude |
 | 4 | pipeline/ranker.py | Hard exclusion filter + score-based ranking |
