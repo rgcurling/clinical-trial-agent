@@ -87,7 +87,7 @@ def run_pipeline(
     # Stage 2 — Retrieve
     condition = profile.conditions[0] if profile.conditions else patient_text.split()[0]
     with _Timer("retrieval"):
-        trials = retrieve_trials(condition)
+        trials = retrieve_trials(condition, profile=profile)
     print(f"Trials retrieved: {len(trials)}\n")
 
     # Stage 3 — Match

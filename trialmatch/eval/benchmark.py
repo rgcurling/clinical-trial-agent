@@ -154,7 +154,7 @@ def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
         try:
             profile = extract_patient_profile(note_text)
             condition = profile.conditions[0] if profile.conditions else note_text.split()[0]
-            trials = retrieve_trials(condition)
+            trials = retrieve_trials(condition, profile=profile)
             match_results = matcher.match_trials(profile, trials)
             ranked = rank_trials(match_results)
 
@@ -254,7 +254,7 @@ def run_synthetic_benchmark() -> list[dict]:
         try:
             profile = extract_patient_profile(patient_text)
             condition = profile.conditions[0] if profile.conditions else patient_text.split()[0]
-            trials = retrieve_trials(condition)
+            trials = retrieve_trials(condition, profile=profile)
             match_results = matcher.match_trials(profile, trials)
             ranked = rank_trials(match_results)
             cards = generate_all_cards(ranked)
