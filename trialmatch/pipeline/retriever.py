@@ -131,17 +131,17 @@ def _build_params(
     Build the CT.gov v2 query params dict from condition + optional profile.
 
     Enrichments applied when a profile is provided:
-    - query.cond: condition + disease stage (narrows to stage-specific trials)
-    - query.term: biomarkers (finds trials that mention these in eligibility text)
+    - query.cond: condition only — kept broad to maximise recall
+    - query.term: disease stage as a soft ranking signal (boosts stage-matched
+      trials without hard-filtering) + any caller-supplied extra_terms
     - aggFilters: age category (drops pediatric-only trials for adult patients)
+
+    Biomarkers are intentionally excluded from the query: negative markers
+    (e.g. "EGFR negative") attract mutation-specific trials that are exactly
+    wrong for the patient. Stage-based and criteria-level matching is left to
+    the LLM matcher in Stage 3.
     """
-    # Build condition string: "non-small cell lung cancer Stage IIIB"
-    cond_parts = [condition]
-    if profile and profile.stage:
-        cond_parts.append(profile.stage)
-    if extra_terms:
-        cond_parts.append(extra_terms)
-    query_cond = " ".join(cond_parts)
+    query_cond = condition  # bare condition for maximum recall
 
     params: dict = {
         "query.cond": query_cond,
@@ -150,9 +150,14 @@ def _build_params(
         "format": "json",
     }
 
-    # Add biomarkers as additional free-text terms (up to 2 to avoid over-narrowing)
-    if profile and profile.biomarkers:
-        params["query.term"] = " ".join(profile.biomarkers[:2])
+    # Build soft-signal term: stage boosts rank without excluding trials
+    term_parts = []
+    if profile and profile.stage:
+        term_parts.append(profile.stage)
+    if extra_terms:
+        term_parts.append(extra_terms)
+    if term_parts:
+        params["query.term"] = " ".join(term_parts)
 
     # Filter by age category so pediatric-only trials are excluded
     if profile and profile.age is not None and profile.age >= 18:
