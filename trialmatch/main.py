@@ -109,6 +109,11 @@ def run_pipeline(
         print(f"{'─'*60}")
         print(f"Match #{i}  |  NCT: {card['nct_id']}  |  "
               f"Score: {card['match_score']:.2f}  |  FK Grade: {card['fk_grade']:.1f}")
+        if card.get("uncertain_count", 0) > 0:
+            print(
+                f"  ⚠️  {card['uncertain_count']} criterion/criteria uncertain "
+                f"— recommend physician review"
+            )
         print(f"{'─'*60}")
         print(card["card_text"])
         print()

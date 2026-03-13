@@ -140,10 +140,6 @@ def retrieve_trials(
         "filter.overallStatus": "RECRUITING",
         "pageSize": MAX_TRIALS_TO_RETRIEVE,
         "format": "json",
-        "fields": (
-            "NCTId,OfficialTitle,BriefTitle,OverallStatus,Condition,"
-            "EligibilityCriteria,Phase,LocationCity"
-        ),
     }
 
     cache_key = _cache_key(json.dumps(params, sort_keys=True))

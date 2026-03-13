@@ -127,6 +127,7 @@ def generate_all_cards(match_results: list[MatchResult]) -> list[dict]:
                 "match_score": match.match_score,
                 "card_text": card_text,
                 "fk_grade": fk_grade,
+                "uncertain_count": match.uncertain_count,
             }
         )
     return output
