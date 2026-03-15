@@ -1,247 +1,330 @@
 """
-Benchmark runner for TrialMatch AI.
+Benchmark runners for TrialMatch AI.
 
-Two modes:
-  - synthetic (default): runs full pipeline on all .txt files in
-    data/sample_patients/ and reports FK grade + BERTScore per card.
-  - n2c2 (--data-dir flag): loads n2c2 2018 patient/annotation XML files
-    and reports macro-F1 / micro-F1 for eligibility classification.
+run_synthetic_benchmark  — end-to-end eval on sample_patients/, FK + BERTScore
+run_trec_benchmark       — TREC Clinical Trials 2021 retrieval eval, P@5 + NDCG@5
+print_synthetic_summary  — formatted table for synthetic results
+print_trec_summary       — formatted table for TREC results
+
+NOTE: main.py calls run_n2c2_benchmark / print_n2c2_summary for the --benchmark flag.
+Those are aliased here to the TREC versions for backward compatibility.
 """
 
-import glob
+from __future__ import annotations
+
+import json
 import logging
 import os
-import sys
-import xml.etree.ElementTree as ET
-from dataclasses import dataclass
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import urllib.request
+from pathlib import Path
 
 from config import SAMPLE_PATIENTS_DIR
-from eval.metrics import bertscore_consistency, flesch_kincaid_grade, precision_recall_f1
+from eval.metrics import (
+    bertscore_consistency,
+    flesch_kincaid_grade,
+    ndcg_at_k,
+    precision_at_k,
+)
 from pipeline.extractor import extract_patient_profile
 from pipeline.explainer import generate_all_cards
 from pipeline.matcher import ClaudeMatcher
-from pipeline.models import PatientProfile
 from pipeline.ranker import rank_trials
 from pipeline.retriever import retrieve_trials
 
 logger = logging.getLogger(__name__)
 
-# ── Result containers ─────────────────────────────────────────────────────────
+# ── TREC data URLs (TrialGPT FTP mirror, publicly accessible) ────────────────
 
-@dataclass
-class SyntheticResult:
-    patient_file: str
-    num_trials_retrieved: int
-    num_trials_ranked: int
-    fk_grades: list[float]
-    bertscore: float  # vs. raw card (self-consistency check)
+_TREC_2021_CORPUS_URL = (
+    "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_corpus.jsonl"
+)
+_TREC_2021_TOPICS_URL = (
+    "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_topics.json"
+)
+_TREC_2021_QRELS_URL = (
+    "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_qrels.json"
+)
+
+_TREC_DATA_DIR = Path("data/trec_2021")
 
 
-@dataclass
-class N2c2Result:
-    patient_id: str
-    macro_f1: float
-    micro_f1: float
-    precision: float
-    recall: float
+# ── TREC data download helpers ────────────────────────────────────────────────
+
+def _download_if_missing(url: str, dest: Path) -> bool:
+    """Download url to dest if dest doesn't exist. Returns True on success."""
+    if dest.exists():
+        return True
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Downloading {url} → {dest}")
+    try:
+        urllib.request.urlretrieve(url, dest)
+        logger.info(f"Downloaded {dest.name} ({dest.stat().st_size / 1024:.1f} KB)")
+        return True
+    except Exception as e:
+        logger.error(f"Download failed for {url}: {e}")
+        return False
+
+
+def _ensure_trec_data() -> bool:
+    """
+    Download TREC 2021 corpus, topics, and qrels if not already present.
+    Returns True if all files are available.
+    """
+    files = {
+        "corpus": (_TREC_2021_CORPUS_URL, _TREC_DATA_DIR / "corpus.jsonl"),
+        "topics": (_TREC_2021_TOPICS_URL, _TREC_DATA_DIR / "topics.json"),
+        "qrels":  (_TREC_2021_QRELS_URL,  _TREC_DATA_DIR / "qrels.json"),
+    }
+    all_ok = True
+    for name, (url, dest) in files.items():
+        if not _download_if_missing(url, dest):
+            logger.error(f"Could not obtain TREC {name} file.")
+            all_ok = False
+    return all_ok
+
+
+# ── TREC data loaders ─────────────────────────────────────────────────────────
+
+def _load_topics() -> dict[str, str]:
+    """Return {topic_id: patient_note_text}."""
+    path = _TREC_DATA_DIR / "topics.json"
+    with open(path) as f:
+        raw = json.load(f)
+    # TREC topics format: list of {number, text} or dict keyed by topic id
+    if isinstance(raw, list):
+        return {str(t["number"]): t["text"] for t in raw}
+    return {str(k): v for k, v in raw.items()}
+
+
+def _load_qrels() -> dict[str, dict[str, int]]:
+    """
+    Return {topic_id: {nct_id: relevance_grade}}.
+    Relevance grades: 0 = not relevant, 1 = partially relevant, 2 = highly relevant.
+    """
+    path = _TREC_DATA_DIR / "qrels.json"
+    with open(path) as f:
+        return json.load(f)
+
+
+# ── TREC benchmark runner ─────────────────────────────────────────────────────
+
+def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
+    """
+    Evaluate TrialMatch AI against the TREC Clinical Trials 2021 benchmark.
+
+    For each patient topic:
+      1. Extract patient profile from the topic note
+      2. Retrieve trials via ClinicalTrials.gov API
+      3. Match and rank with ClaudeMatcher
+      4. Compute Precision@5 and NDCG@5 vs. TREC relevance judgments
+
+    Args:
+        max_topics: number of TREC topics to evaluate (default 10 to limit API cost)
+
+    Returns:
+        list of per-topic result dicts
+    """
+    print("\nChecking TREC 2021 data...")
+    if not _ensure_trec_data():
+        print(
+            "\n[Error] Could not download TREC 2021 data from FTP mirror.\n"
+            "Manual download instructions:\n"
+            "  Corpus: https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_corpus.jsonl\n"
+            "  Topics: https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_topics.json\n"
+            "  Qrels:  https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_qrels.json\n"
+            f"Place all three files in: {_TREC_DATA_DIR.resolve()}\n"
+        )
+        return []
+
+    topics = _load_topics()
+    qrels = _load_qrels()
+    matcher = ClaudeMatcher()
+    results = []
+
+    topic_ids = list(topics.keys())[:max_topics]
+    print(f"Evaluating {len(topic_ids)} TREC topics (of {len(topics)} total)...\n")
+
+    for topic_id in topic_ids:
+        note_text = topics[topic_id]
+        topic_qrels = qrels.get(topic_id, {})  # {nct_id: grade}
+        relevant_ncts = [nct for nct, grade in topic_qrels.items() if grade > 0]
+
+        logger.info(f"Topic {topic_id}: {len(relevant_ncts)} relevant trials in qrels")
+
+        try:
+            profile = extract_patient_profile(note_text)
+            condition = profile.conditions[0] if profile.conditions else note_text.split()[0]
+            trials = retrieve_trials(condition, profile=profile)
+            match_results = matcher.match_trials(profile, trials)
+            ranked = rank_trials(match_results)
+
+            retrieved_ncts = [m.trial.nct_id for m in ranked]
+
+            p5 = precision_at_k(retrieved_ncts, relevant_ncts, k=5)
+            ndcg5 = ndcg_at_k(retrieved_ncts, topic_qrels, k=5)
+
+            result = {
+                "topic_id": topic_id,
+                "retrieved_ncts": retrieved_ncts,
+                "relevant_ncts": relevant_ncts,
+                "precision_at_5": p5,
+                "ndcg_at_5": ndcg5,
+                "n_retrieved": len(retrieved_ncts),
+                "n_relevant_in_qrels": len(relevant_ncts),
+            }
+        except Exception as e:
+            logger.error(f"Topic {topic_id} failed: {e}")
+            result = {
+                "topic_id": topic_id,
+                "error": str(e),
+                "precision_at_5": 0.0,
+                "ndcg_at_5": 0.0,
+            }
+
+        results.append(result)
+        print(
+            f"  Topic {topic_id}: P@5={result['precision_at_5']:.3f}  "
+            f"NDCG@5={result['ndcg_at_5']:.3f}"
+        )
+
+    return results
+
+
+def print_trec_summary(results: list[dict]) -> None:
+    """Print a formatted summary table for TREC benchmark results."""
+    if not results:
+        print("\nNo TREC results to summarize.")
+        return
+
+    valid = [r for r in results if "error" not in r]
+    errors = [r for r in results if "error" in r]
+
+    print(f"\n{'='*65}")
+    print(f"{'TREC Clinical Trials 2021 Benchmark':^65}")
+    print(f"{'='*65}")
+    print(f"{'Topic':<10} {'Retrieved':>10} {'Relevant':>10} {'P@5':>8} {'NDCG@5':>8}")
+    print(f"{'-'*65}")
+
+    for r in results:
+        if "error" in r:
+            print(f"{r['topic_id']:<10} {'ERROR':<10} {r['error'][:30]}")
+            continue
+        flag = " ⚠️" if r["precision_at_5"] == 0.0 else ""
+        print(
+            f"{r['topic_id']:<10} {r['n_retrieved']:>10} "
+            f"{r['n_relevant_in_qrels']:>10} "
+            f"{r['precision_at_5']:>8.3f} {r['ndcg_at_5']:>8.3f}{flag}"
+        )
+
+    if valid:
+        mean_p5 = sum(r["precision_at_5"] for r in valid) / len(valid)
+        mean_ndcg5 = sum(r["ndcg_at_5"] for r in valid) / len(valid)
+        print(f"{'-'*65}")
+        print(f"{'MEAN':<10} {' ':>10} {' ':>10} {mean_p5:>8.3f} {mean_ndcg5:>8.3f}")
+        print(f"{'='*65}")
+        print(f"\nTopics evaluated: {len(valid)}  |  Errors: {len(errors)}")
+        print(f"Target: P@5 > ClinicalTrials.gov keyword baseline")
+
+    if errors:
+        print(f"\nFailed topics: {[r['topic_id'] for r in errors]}")
 
 
 # ── Synthetic benchmark ───────────────────────────────────────────────────────
 
-def run_synthetic_benchmark(patients_dir: str = SAMPLE_PATIENTS_DIR) -> list[SyntheticResult]:
+def run_synthetic_benchmark() -> list[dict]:
     """
-    Run full pipeline on every .txt patient file in *patients_dir*.
-    Returns a list of SyntheticResult, one per patient.
+    End-to-end eval on all patient .txt files in data/sample_patients/.
+    Computes FK grade and BERTScore for each output card.
+    Returns list of per-patient result dicts.
     """
-    patient_files = sorted(glob.glob(os.path.join(patients_dir, "*.txt")))
+    patient_dir = Path(SAMPLE_PATIENTS_DIR)
+    patient_files = sorted(patient_dir.glob("*.txt"))
+
     if not patient_files:
-        logger.warning(f"No .txt files found in {patients_dir}")
+        print(f"No patient files found in {patient_dir}")
         return []
 
     matcher = ClaudeMatcher()
     results = []
 
-    for path in patient_files:
-        fname = os.path.basename(path)
-        logger.info(f"--- Benchmarking {fname} ---")
+    for pf in patient_files:
+        patient_text = pf.read_text().strip()
+        logger.info(f"Synthetic eval: {pf.name}")
 
-        with open(path) as f:
-            text = f.read().strip()
+        try:
+            profile = extract_patient_profile(patient_text)
+            condition = profile.conditions[0] if profile.conditions else patient_text.split()[0]
+            trials = retrieve_trials(condition, profile=profile)
+            match_results = matcher.match_trials(profile, trials)
+            ranked = rank_trials(match_results)
+            cards = generate_all_cards(ranked)
 
-        profile: PatientProfile = extract_patient_profile(text)
+            fk_scores = [c["fk_grade"] for c in cards]
+            bert_scores = []
+            for card, match in zip(cards, ranked):
+                bs = bertscore_consistency(
+                    card["card_text"],
+                    match.trial.eligibility_criteria_raw,
+                )
+                bert_scores.append(bs)
 
-        # Use first extracted condition for retrieval; fall back to raw text keyword
-        condition = profile.conditions[0] if profile.conditions else text.split()[0]
+            results.append({
+                "patient_file": pf.name,
+                "n_trials_returned": len(cards),
+                "cards": cards,
+                "mean_fk": sum(fk_scores) / len(fk_scores) if fk_scores else 0.0,
+                "mean_bertscore": sum(bert_scores) / len(bert_scores) if bert_scores else 0.0,
+            })
 
-        trials = retrieve_trials(condition)
-        match_results = matcher.match_trials(profile, trials)
-        ranked = rank_trials(match_results)
-        cards = generate_all_cards(ranked)
-
-        fk_grades = [c["fk_grade"] for c in cards]
-
-        # BERTScore: compare first card against itself as a sanity check
-        # (real eval compares against a reference; here we use self-consistency)
-        bs = float("nan")
-        if cards:
-            bs = bertscore_consistency(cards[0]["card_text"], cards[0]["card_text"])
-
-        results.append(
-            SyntheticResult(
-                patient_file=fname,
-                num_trials_retrieved=len(trials),
-                num_trials_ranked=len(ranked),
-                fk_grades=fk_grades,
-                bertscore=bs,
-            )
-        )
+        except Exception as e:
+            logger.error(f"{pf.name} failed: {e}")
+            results.append({
+                "patient_file": pf.name,
+                "error": str(e),
+                "n_trials_returned": 0,
+                "mean_fk": 0.0,
+                "mean_bertscore": 0.0,
+            })
 
     return results
 
 
-def print_synthetic_summary(results: list[SyntheticResult]) -> None:
-    header = f"{'Patient':<20} {'Retrieved':>10} {'Ranked':>7} {'Avg FK':>7} {'BERTScore':>10}"
-    print("\n" + "=" * len(header))
-    print("SYNTHETIC BENCHMARK SUMMARY")
-    print("=" * len(header))
-    print(header)
-    print("-" * len(header))
-    for r in results:
-        avg_fk = sum(r.fk_grades) / len(r.fk_grades) if r.fk_grades else float("nan")
-        print(
-            f"{r.patient_file:<20} {r.num_trials_retrieved:>10} "
-            f"{r.num_trials_ranked:>7} {avg_fk:>7.1f} {r.bertscore:>10.3f}"
-        )
-    print("=" * len(header))
-
-
-# ── n2c2 benchmark ────────────────────────────────────────────────────────────
-
-def _map_label(label: str) -> int:
-    """Map n2c2 annotation labels to binary 0/1."""
-    return 1 if label.strip().upper() in ("MET", "YES", "1", "TRUE") else 0
-
-
-def _eligible_label_from_criterion(
-    profile: PatientProfile,
-    criterion_text: str,
-    criterion_type: str,
-) -> int:
-    """
-    Run Claude on a single criterion for a given profile.
-    Returns 1 (eligible) or 0 (not eligible).
-    """
-    from pipeline.matcher import ClaudeMatcher, _patient_profile_to_text, _call_claude_for_criterion
-    import anthropic as _anthropic
-    from config import ANTHROPIC_API_KEY
-
-    client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    patient_text = _patient_profile_to_text(profile)
-    result = _call_claude_for_criterion(client, patient_text, criterion_type, criterion_text)
-    eligible = result.get("eligible", "uncertain")
-    return 1 if eligible == "true" else 0
-
-
-def run_n2c2_benchmark(data_dir: str) -> list[N2c2Result]:
-    """
-    Load n2c2 2018 cohort selection XML files from *data_dir*.
-    Expected structure:
-      data_dir/
-        train/
-          *.xml   (patient records)
-        train_annotations/
-          *.xml   (criterion labels)
-
-    Returns N2c2Result per patient.
-    """
-    records_dir = os.path.join(data_dir, "train")
-    annot_dir = os.path.join(data_dir, "train_annotations")
-
-    if not os.path.isdir(records_dir):
-        logger.error(f"n2c2 records directory not found: {records_dir}")
-        return []
-
-    record_files = sorted(glob.glob(os.path.join(records_dir, "*.xml")))
-    results = []
-
-    for rec_path in record_files:
-        patient_id = os.path.splitext(os.path.basename(rec_path))[0]
-        annot_path = os.path.join(annot_dir, f"{patient_id}.xml")
-
-        if not os.path.exists(annot_path):
-            logger.warning(f"No annotation file for {patient_id}; skipping")
-            continue
-
-        # Parse patient record
-        try:
-            rec_tree = ET.parse(rec_path)
-            rec_root = rec_tree.getroot()
-            patient_text = " ".join(
-                elem.text for elem in rec_root.iter() if elem.text
-            ).strip()
-        except Exception as e:
-            logger.warning(f"Failed to parse {rec_path}: {e}")
-            continue
-
-        # Parse annotations
-        try:
-            ann_tree = ET.parse(annot_path)
-            ann_root = ann_tree.getroot()
-        except Exception as e:
-            logger.warning(f"Failed to parse {annot_path}: {e}")
-            continue
-
-        profile = extract_patient_profile(patient_text)
-        y_true, y_pred = [], []
-
-        for tag in ann_root.iter():
-            criterion_text = tag.get("met") or tag.get("text") or tag.tag
-            label_str = tag.get("met", "")
-            if not label_str:
-                continue
-            true_label = _map_label(label_str)
-            pred_label = _eligible_label_from_criterion(profile, criterion_text, "inclusion")
-            y_true.append(true_label)
-            y_pred.append(pred_label)
-
-        if not y_true:
-            continue
-
-        metrics = precision_recall_f1(y_pred, y_true)
-        results.append(
-            N2c2Result(
-                patient_id=patient_id,
-                macro_f1=metrics["f1"],
-                micro_f1=metrics["f1"],
-                precision=metrics["precision"],
-                recall=metrics["recall"],
-            )
-        )
-
-    return results
-
-
-def print_n2c2_summary(results: list[N2c2Result]) -> None:
+def print_synthetic_summary(results: list[dict]) -> None:
+    """Print formatted table of synthetic benchmark results."""
     if not results:
-        print("No n2c2 results to display.")
+        print("No synthetic results to summarize.")
         return
-    header = f"{'Patient':<20} {'Precision':>10} {'Recall':>8} {'F1':>8}"
-    print("\n" + "=" * len(header))
-    print("N2C2 BENCHMARK SUMMARY")
-    print("=" * len(header))
-    print(header)
-    print("-" * len(header))
+
+    print(f"\n{'='*70}")
+    print(f"{'Synthetic Patient Benchmark':^70}")
+    print(f"{'='*70}")
+    print(f"{'Patient':<20} {'Trials':>7} {'Mean FK':>9} {'BERTScore':>11}")
+    print(f"{'-'*70}")
+
     for r in results:
+        if "error" in r:
+            print(f"{r['patient_file']:<20} {'ERROR':<7}  {r['error'][:35]}")
+            continue
+        fk_flag = " ⚠️" if r["mean_fk"] > 8 else ""
         print(
-            f"{r.patient_id:<20} {r.precision:>10.3f} "
-            f"{r.recall:>8.3f} {r.macro_f1:>8.3f}"
+            f"{r['patient_file']:<20} {r['n_trials_returned']:>7} "
+            f"{r['mean_fk']:>9.2f}{fk_flag} {r['mean_bertscore']:>11.3f}"
         )
 
-    avg_f1 = sum(r.macro_f1 for r in results) / len(results)
-    avg_p = sum(r.precision for r in results) / len(results)
-    avg_r = sum(r.recall for r in results) / len(results)
-    print("-" * len(header))
-    print(f"{'AVERAGE':<20} {avg_p:>10.3f} {avg_r:>8.3f} {avg_f1:>8.3f}")
-    print("=" * len(header))
+    valid = [r for r in results if "error" not in r]
+    if valid:
+        mean_fk = sum(r["mean_fk"] for r in valid) / len(valid)
+        mean_bs = sum(r["mean_bertscore"] for r in valid) / len(valid)
+        print(f"{'-'*70}")
+        print(f"{'MEAN':<20} {' ':>7} {mean_fk:>9.2f} {mean_bs:>11.3f}")
+        print(f"{'='*70}")
+        print(f"\nFK target: ≤ 8.0  |  BERTScore target: ≥ 0.85")
+        fk_violations = sum(1 for r in valid if r["mean_fk"] > 8)
+        if fk_violations:
+            print(f"⚠️  {fk_violations} patient(s) exceed FK grade target")
+
+
+# ── Backward-compatibility aliases (main.py imports these names) ──────────────
+
+run_n2c2_benchmark = run_trec_benchmark
+print_n2c2_summary = print_trec_summary

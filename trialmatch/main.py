@@ -87,7 +87,7 @@ def run_pipeline(
     # Stage 2 — Retrieve
     condition = profile.conditions[0] if profile.conditions else patient_text.split()[0]
     with _Timer("retrieval"):
-        trials = retrieve_trials(condition)
+        trials = retrieve_trials(condition, profile=profile)
     print(f"Trials retrieved: {len(trials)}\n")
 
     # Stage 3 — Match
@@ -109,6 +109,11 @@ def run_pipeline(
         print(f"{'─'*60}")
         print(f"Match #{i}  |  NCT: {card['nct_id']}  |  "
               f"Score: {card['match_score']:.2f}  |  FK Grade: {card['fk_grade']:.1f}")
+        if card.get("uncertain_count", 0) > 0:
+            print(
+                f"  ⚠️  {card['uncertain_count']} criterion/criteria uncertain "
+                f"— recommend physician review"
+            )
         print(f"{'─'*60}")
         print(card["card_text"])
         print()

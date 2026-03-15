@@ -24,7 +24,7 @@ from config import (
     CLINICALTRIALS_BASE_URL,
     MAX_TRIALS_TO_RETRIEVE,
 )
-from pipeline.models import Trial
+from pipeline.models import PatientProfile, Trial
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +98,9 @@ def _parse_trial(study: dict) -> Optional[Trial]:
         phase = phases[0] if phases else None
 
         locations = [
-            loc.get("facility", {}).get("address", {}).get("city", "")
+            loc.get("city", "")
             for loc in contacts_mod.get("locations", [])
-            if loc.get("facility", {}).get("address", {}).get("city")
+            if loc.get("city")
         ]
 
         if not nct_id:
@@ -120,40 +120,79 @@ def _parse_trial(study: dict) -> Optional[Trial]:
         return None
 
 
+# ── Query builders ────────────────────────────────────────────────────────────
+
+def _build_params(
+    condition: str,
+    extra_terms: Optional[str],
+    profile: Optional[PatientProfile],
+) -> dict:
+    """
+    Build the CT.gov v2 query params dict from condition + optional profile.
+
+    Enrichments applied when a profile is provided:
+    - query.cond: condition only — kept broad to maximise recall
+    - query.term: disease stage as a soft ranking signal (boosts stage-matched
+      trials without hard-filtering) + any caller-supplied extra_terms
+    - aggFilters: age category (drops pediatric-only trials for adult patients)
+
+    Biomarkers are intentionally excluded from the query: negative markers
+    (e.g. "EGFR negative") attract mutation-specific trials that are exactly
+    wrong for the patient. Stage-based and criteria-level matching is left to
+    the LLM matcher in Stage 3.
+    """
+    query_cond = condition  # bare condition for maximum recall
+
+    params: dict = {
+        "query.cond": query_cond,
+        "filter.overallStatus": "RECRUITING",
+        "pageSize": MAX_TRIALS_TO_RETRIEVE,
+        "format": "json",
+    }
+
+    # Build soft-signal term: stage boosts rank without excluding trials
+    term_parts = []
+    if profile and profile.stage:
+        term_parts.append(profile.stage)
+    if extra_terms:
+        term_parts.append(extra_terms)
+    if term_parts:
+        params["query.term"] = " ".join(term_parts)
+
+    # Filter by age category so pediatric-only trials are excluded
+    if profile and profile.age is not None and profile.age >= 18:
+        params["aggFilters"] = "ages:adult"
+
+    return params
+
+
 # ── Public retriever ──────────────────────────────────────────────────────────
 
 def retrieve_trials(
     condition: str,
     extra_terms: Optional[str] = None,
+    profile: Optional[PatientProfile] = None,
 ) -> list[Trial]:
     """
     Fetch recruiting trials for *condition* from ClinicalTrials.gov.
+
+    When *profile* is provided the query is enriched with disease stage,
+    biomarkers, and age category to improve retrieval precision.
+
     Returns a list of Trial dataclasses (up to MAX_TRIALS_TO_RETRIEVE).
     Results are cached to disk by query hash.
     """
-    query_condition = condition
-    if extra_terms:
-        query_condition = f"{condition} {extra_terms}"
-
-    params = {
-        "query.cond": query_condition,
-        "filter.overallStatus": "RECRUITING",
-        "pageSize": MAX_TRIALS_TO_RETRIEVE,
-        "format": "json",
-        "fields": (
-            "NCTId,OfficialTitle,BriefTitle,OverallStatus,Condition,"
-            "EligibilityCriteria,Phase,LocationCity"
-        ),
-    }
+    params = _build_params(condition, extra_terms, profile)
+    query_cond = params["query.cond"]
 
     cache_key = _cache_key(json.dumps(params, sort_keys=True))
     cached = _load_cache(cache_key)
 
     if cached is not None:
-        logger.info(f"Cache hit for query '{query_condition}' (key={cache_key[:8]})")
+        logger.info(f"Cache hit for query '{query_cond}' (key={cache_key[:8]})")
         data = cached
     else:
-        logger.info(f"Fetching trials for '{query_condition}' from ClinicalTrials.gov")
+        logger.info(f"Fetching trials for '{query_cond}' from ClinicalTrials.gov")
         try:
             data = _fetch_from_api(params)
         except Exception as e:
@@ -164,5 +203,5 @@ def retrieve_trials(
 
     studies = data.get("studies", [])
     trials = [t for s in studies if (t := _parse_trial(s)) is not None]
-    logger.info(f"Retrieved {len(trials)} trials for '{query_condition}'")
+    logger.info(f"Retrieved {len(trials)} trials for '{query_cond}'")
     return trials
