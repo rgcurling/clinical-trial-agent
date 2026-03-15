@@ -114,7 +114,8 @@ def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
 
     For each patient topic:
       1. Extract patient profile from the topic note
-      2. Retrieve trials via ClinicalTrials.gov API
+      2. Retrieve candidate trials from the local TREC corpus using BM25
+         (ensures NCT IDs are drawn from the judged set)
       3. Match and rank with ClaudeMatcher
       4. Compute Precision@5 and NDCG@5 vs. TREC relevance judgments
 
@@ -136,6 +137,11 @@ def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
         )
         return []
 
+    # Build BM25 index over the TREC corpus (one-time, cached after first run)
+    print("\nLoading corpus retriever (building BM25 index on first run)...")
+    from pipeline.corpus_retriever import CorpusRetriever
+    corpus_retriever = CorpusRetriever()
+
     topics = _load_topics()
     qrels = _load_qrels()
     matcher = ClaudeMatcher()
@@ -153,8 +159,7 @@ def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
 
         try:
             profile = extract_patient_profile(note_text)
-            condition = profile.conditions[0] if profile.conditions else note_text.split()[0]
-            trials = retrieve_trials(condition, profile=profile)
+            trials = corpus_retriever.retrieve(profile, top_k=20)
             match_results = matcher.match_trials(profile, trials)
             ranked = rank_trials(match_results)
 
