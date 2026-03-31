@@ -205,3 +205,91 @@ def retrieve_trials(
     trials = [t for s in studies if (t := _parse_trial(s)) is not None]
     logger.info(f"Retrieved {len(trials)} trials for '{query_cond}'")
     return trials
+
+
+# ── Corpus-based retriever (TF-IDF) ──────────────────────────────────────────
+
+def retrieve_from_corpus(
+    patient_text: str,
+    corpus_path,
+    top_k: int = 20,
+) -> list[Trial]:
+    """
+    Retrieve top_k trials from a TREC-format JSONL corpus using TF-IDF cosine
+    similarity. Each line should be a JSON object with fields:
+      nct_id (or _id), title, condition (or metadata.conditions),
+      eligibility_criteria (or text)
+
+    Caches the fitted TfidfVectorizer and document matrix alongside corpus_path
+    as a .pkl file so fitting only happens once.
+    """
+    import pickle
+    from pathlib import Path
+
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    corpus_path = Path(corpus_path)
+    cache_path = corpus_path.with_name(corpus_path.stem + ".tfidf_cache.pkl")
+
+    trials: list[Trial] = []
+    vectorizer: Optional[TfidfVectorizer] = None
+    matrix = None
+
+    if cache_path.exists():
+        logger.info(f"Loading TF-IDF cache from {cache_path}")
+        with open(cache_path, "rb") as f:
+            cached = pickle.load(f)
+        trials = cached["trials"]
+        vectorizer = cached["vectorizer"]
+        matrix = cached["matrix"]
+        logger.info(f"Loaded {len(trials):,} trials from TF-IDF cache")
+    else:
+        logger.info(f"Building TF-IDF index from {corpus_path} (one-time)...")
+        docs: list[str] = []
+
+        with open(corpus_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+
+                nct_id = record.get("nct_id") or record.get("_id", "")
+                title = record.get("title", "")
+
+                condition = record.get("condition", "")
+                if not condition:
+                    meta = record.get("metadata", {})
+                    conditions = meta.get("conditions", [])
+                    condition = " ".join(conditions) if isinstance(conditions, list) else str(conditions)
+
+                eligibility = record.get("eligibility_criteria", "") or record.get("text", "")
+
+                if not nct_id:
+                    continue
+
+                trial = Trial(
+                    nct_id=nct_id,
+                    title=title,
+                    phase=None,
+                    status="RECRUITING",
+                    conditions=[condition] if condition else [],
+                    eligibility_criteria_raw=eligibility,
+                )
+                trials.append(trial)
+                docs.append(f"{title} {condition} {eligibility}")
+
+        vectorizer = TfidfVectorizer(max_features=50_000, sublinear_tf=True)
+        matrix = vectorizer.fit_transform(docs)
+
+        logger.info(f"Fitted TF-IDF over {len(trials):,} trials. Caching to {cache_path}...")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "wb") as f:
+            pickle.dump({"trials": trials, "vectorizer": vectorizer, "matrix": matrix}, f)
+        logger.info("TF-IDF cache saved.")
+
+    query_vec = vectorizer.transform([patient_text])
+    sims = cosine_similarity(query_vec, matrix)[0]
+    top_indices = sims.argsort()[::-1][:top_k]
+    return [trials[i] for i in top_indices]

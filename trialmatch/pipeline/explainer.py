@@ -11,7 +11,7 @@ import anthropic
 import textstat
 
 from config import ANTHROPIC_API_KEY, PRIMARY_MODEL, TARGET_FK_GRADE
-from pipeline.models import CriterionResult, MatchResult
+from pipeline.models import MatchResult
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +55,10 @@ Text to simplify:
 Return ONLY the simplified text with no other commentary."""
 
 
-def _format_criteria_list(criteria: list[CriterionResult]) -> str:
+def _format_criteria_list(criteria: list[str]) -> str:
     if not criteria:
         return "  (none)"
-    return "\n".join(f"  - {c.criterion_text}" for c in criteria)
+    return "\n".join(f"  - {c}" for c in criteria)
 
 
 def generate_trial_card(match: MatchResult) -> str:
@@ -69,8 +69,8 @@ def generate_trial_card(match: MatchResult) -> str:
     """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    met = [r for r in match.criterion_results if r.criterion_type == "inclusion" and r.eligible == "true"]
-    uncertain = [r for r in match.criterion_results if r.eligible == "uncertain"]
+    met = match.met_criteria
+    uncertain = match.uncertain_criteria
 
     score_display = round(match.match_score * 10, 1)
 

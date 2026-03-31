@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from pipeline.matcher import ClaudeMatcher, compute_match_score, parse_criteria
-from pipeline.models import CriterionResult, MatchResult, PatientProfile, Trial
+from pipeline.models import MatchResult, PatientProfile, Trial
 
 SAMPLE_PROFILE = PatientProfile(
     raw_text="58-year-old male with Stage IIIB NSCLC, EGFR negative, Tampa FL.",
@@ -31,10 +31,13 @@ SAMPLE_TRIAL = Trial(
 )
 
 FAKE_CLAUDE_RESPONSE = json.dumps({
-    "eligible": "true",
-    "confidence": 0.92,
-    "reasoning": "Patient is 58 years old, meets age >= 18 requirement.",
-    "relevant_patient_info": "58-year-old",
+    "overall_score": 0.92,
+    "met_criteria": ["Age 18 or older", "Diagnosis of non-small cell lung cancer"],
+    "failed_criteria": [],
+    "uncertain_criteria": [],
+    "hard_exclusion": False,
+    "exclusion_reason": None,
+    "reasoning": "Patient is 58 years old with confirmed NSCLC, meets all inclusion criteria.",
 })
 
 
@@ -54,23 +57,15 @@ class TestParseCriteria(unittest.TestCase):
 
 class TestComputeMatchScore(unittest.TestCase):
     def test_full_inclusion_met(self):
-        results = [
-            CriterionResult("Age >= 18", "inclusion", "true", 0.95, "ok", "58"),
-            CriterionResult("NSCLC diagnosis", "inclusion", "true", 0.9, "ok", "lung cancer"),
-        ]
-        score = compute_match_score(results)
+        score = compute_match_score(overall_score=1.0, hard_exclusion=False)
         self.assertAlmostEqual(score, 1.0)
 
     def test_exclusion_triggered_returns_zero(self):
-        results = [
-            CriterionResult("Age >= 18", "inclusion", "true", 0.95, "ok", "58"),
-            CriterionResult("No prior chemo", "exclusion", "false", 0.95, "had chemo", "chemo"),
-        ]
-        score = compute_match_score(results)
+        score = compute_match_score(overall_score=0.9, hard_exclusion=True)
         self.assertEqual(score, 0.0)
 
-    def test_empty_inclusion_returns_zero(self):
-        score = compute_match_score([])
+    def test_zero_overall_score(self):
+        score = compute_match_score(overall_score=0.0, hard_exclusion=False)
         self.assertEqual(score, 0.0)
 
 
@@ -97,11 +92,18 @@ class TestClaudeMatcher(unittest.TestCase):
         self.assertGreater(result.match_score, 0.0)
 
     @patch("pipeline.matcher.anthropic.Anthropic")
-    def test_criterion_results_populated(self, mock_anthropic):
+    def test_met_criteria_populated(self, mock_anthropic):
         mock_anthropic.return_value = self._make_mock_client()
         matcher = ClaudeMatcher()
         result = matcher.match_trial(SAMPLE_PROFILE, SAMPLE_TRIAL)
-        self.assertGreater(len(result.criterion_results), 0)
+        self.assertGreater(len(result.met_criteria), 0)
+
+    @patch("pipeline.matcher.anthropic.Anthropic")
+    def test_hard_exclusion_false_by_default(self, mock_anthropic):
+        mock_anthropic.return_value = self._make_mock_client()
+        matcher = ClaudeMatcher()
+        result = matcher.match_trial(SAMPLE_PROFILE, SAMPLE_TRIAL)
+        self.assertFalse(result.hard_exclusion)
 
     @patch("pipeline.matcher.anthropic.Anthropic")
     def test_match_trials_respects_max(self, mock_anthropic):

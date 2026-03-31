@@ -26,21 +26,14 @@ class Trial:
 
 
 @dataclass
-class CriterionResult:
-    criterion_text: str
-    criterion_type: str          # "inclusion" or "exclusion"
-    eligible: str                # "true", "false", "uncertain"
-    confidence: float
-    reasoning: str
-    relevant_patient_info: str
-
-
-@dataclass
 class MatchResult:
     trial: Trial
-    criterion_results: list[CriterionResult]
-    match_score: float
-    met_inclusion: int
-    failed_inclusion: int
-    triggered_exclusion: int
-    uncertain_count: int
+    overall_score: float
+    met_criteria: list[str]
+    failed_criteria: list[str]
+    uncertain_criteria: list[str]
+    hard_exclusion: bool
+    exclusion_reason: Optional[str]
+    reasoning: str
+    match_score: float          # 0.0 if hard_exclusion else overall_score
+    uncertain_count: int        # len(uncertain_criteria)

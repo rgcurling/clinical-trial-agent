@@ -29,7 +29,7 @@ from pipeline.extractor import extract_patient_profile
 from pipeline.explainer import generate_all_cards
 from pipeline.matcher import ClaudeMatcher
 from pipeline.ranker import rank_trials
-from pipeline.retriever import retrieve_trials
+from pipeline.retriever import retrieve_from_corpus, retrieve_trials
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +137,7 @@ def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
         )
         return []
 
-    # Build BM25 index over the TREC corpus (one-time, cached after first run)
-    print("\nLoading corpus retriever (building BM25 index on first run)...")
-    from pipeline.corpus_retriever import CorpusRetriever
-    corpus_retriever = CorpusRetriever()
-
+    _corpus_path = _TREC_DATA_DIR / "corpus.jsonl"
     topics = _load_topics()
     qrels = _load_qrels()
     matcher = ClaudeMatcher()
@@ -159,7 +155,7 @@ def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
 
         try:
             profile = extract_patient_profile(note_text)
-            trials = corpus_retriever.retrieve(profile, top_k=20)
+            trials = retrieve_from_corpus(note_text, _corpus_path, top_k=20)
             match_results = matcher.match_trials(profile, trials)
             ranked = rank_trials(match_results)
 

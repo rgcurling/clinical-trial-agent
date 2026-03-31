@@ -1,8 +1,8 @@
 """
-Stage 3 — Criterion Parsing + Per-Criterion Matching
+Stage 3 — Per-Trial Matching
 
-Each criterion gets its own Claude API call (never batched).
-Architecture follows Wornow et al. (2025) and Jin et al. (2024).
+Single Claude API call per trial returns structured JSON with overall score,
+met/failed/uncertain criteria, and exclusion assessment.
 """
 
 import json
@@ -14,14 +14,10 @@ import anthropic
 
 from config import (
     ANTHROPIC_API_KEY,
-    EXCLUSION_CONFIDENCE_THRESHOLD,
     MAX_TRIALS_TO_MATCH,
-    OPENAI_API_KEY,
     PRIMARY_MODEL,
-    BASELINE_MODEL,
 )
 from pipeline.models import (
-    CriterionResult,
     MatchResult,
     PatientProfile,
     Trial,
@@ -106,29 +102,33 @@ def parse_criteria(raw_text: str) -> dict[str, list[str]]:
 # ── Matching prompt ───────────────────────────────────────────────────────────
 
 _MATCH_PROMPT = """\
-You are a clinical trial eligibility assessor. Your job is to determine whether a specific patient meets a single eligibility criterion.
+You are a clinical trial eligibility assessor. Given a patient profile and a trial's eligibility criteria, determine how well the patient matches the trial.
 
 Patient Profile:
 {patient_profile_text}
 
-Criterion Type: {inclusion_or_exclusion}
-Criterion: "{criterion_text}"
+Inclusion Criteria:
+{inclusion_criteria}
 
-Does this patient meet this criterion based on the information provided?
+Exclusion Criteria:
+{exclusion_criteria}
+
+Assess the patient against these criteria and return ONLY valid JSON with no other text:
+{{
+  "overall_score": <float 0.0-1.0, fraction of inclusion criteria the patient meets>,
+  "met_criteria": ["<inclusion criterion the patient clearly meets>", ...],
+  "failed_criteria": ["<inclusion criterion the patient clearly does not meet>", ...],
+  "uncertain_criteria": ["<criterion where patient info is missing or ambiguous>", ...],
+  "hard_exclusion": <true if any exclusion criterion is clearly triggered, else false>,
+  "exclusion_reason": "<which exclusion criterion was triggered, or null>",
+  "reasoning": "<one short paragraph explaining the overall assessment>"
+}}
 
 Rules:
-- If the patient profile clearly satisfies the criterion, set eligible to "true"
-- If the patient profile clearly does not satisfy the criterion, set eligible to "false"
-- If the patient profile does not contain enough information to assess this criterion, set eligible to "uncertain"
-- Be conservative: when in doubt, prefer "uncertain" over "false"
-
-Respond ONLY with valid JSON, no other text:
-{{
-  "eligible": "true" | "false" | "uncertain",
-  "confidence": <float 0.0-1.0>,
-  "reasoning": "<one sentence citing specific patient information>",
-  "relevant_patient_info": "<exact text from patient profile that informed this, or 'not mentioned' if absent>"
-}}"""
+- overall_score reflects the fraction of inclusion criteria met (0.0 if none are met)
+- Set hard_exclusion to true only when the patient clearly meets an exclusion criterion
+- When information is missing, classify the criterion as uncertain, not failed
+- If hard_exclusion is true, set overall_score to 0.0"""
 
 
 def _patient_profile_to_text(profile: PatientProfile) -> str:
@@ -150,56 +150,75 @@ def _patient_profile_to_text(profile: PatientProfile) -> str:
     return "\n".join(parts)
 
 
-def _call_claude_for_criterion(
+def _format_criteria_list(criteria: list[str]) -> str:
+    if not criteria:
+        return "  (none)"
+    return "\n".join(f"  - {c}" for c in criteria)
+
+
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+
+def _strip_fences(text: str) -> str:
+    """Remove markdown code fences if present, otherwise return text as-is."""
+    m = _FENCE_RE.search(text)
+    return m.group(1) if m else text
+
+
+def _safe_default() -> dict:
+    return {
+        "overall_score": 0.0,
+        "met_criteria": [],
+        "failed_criteria": [],
+        "uncertain_criteria": [],
+        "hard_exclusion": False,
+        "exclusion_reason": None,
+        "reasoning": "Could not parse Claude response.",
+    }
+
+
+def _call_claude_for_trial(
     client: anthropic.Anthropic,
     patient_text: str,
-    criterion_type: str,
-    criterion_text: str,
+    inclusion_criteria: list[str],
+    exclusion_criteria: list[str],
 ) -> dict:
     prompt = _MATCH_PROMPT.format(
         patient_profile_text=patient_text,
-        inclusion_or_exclusion=criterion_type,
-        criterion_text=criterion_text,
+        inclusion_criteria=_format_criteria_list(inclusion_criteria),
+        exclusion_criteria=_format_criteria_list(exclusion_criteria),
     )
     msg = client.messages.create(
         model=PRIMARY_MODEL,
-        max_tokens=512,
+        max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = msg.content[0].text.strip()
+    raw = _strip_fences(msg.content[0].text.strip())
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        logger.warning("Claude returned malformed JSON for criterion; attempting repair")
+        logger.warning("Claude returned malformed JSON for trial; attempting repair")
         repair_prompt = (
             "The following should be valid JSON but is not. "
             "Return ONLY the corrected JSON with no other text:\n\n" + raw
         )
         repair_msg = client.messages.create(
             model=PRIMARY_MODEL,
-            max_tokens=512,
+            max_tokens=1024,
             messages=[{"role": "user", "content": repair_prompt}],
         )
-        return json.loads(repair_msg.content[0].text.strip())
+        repaired = _strip_fences(repair_msg.content[0].text.strip())
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            logger.error("Repair also failed; using safe default for this trial")
+            return _safe_default()
 
 
 # ── Score computation ─────────────────────────────────────────────────────────
 
-def compute_match_score(criterion_results: list[CriterionResult]) -> float:
-    inclusion = [r for r in criterion_results if r.criterion_type == "inclusion"]
-    exclusion = [r for r in criterion_results if r.criterion_type == "exclusion"]
-
-    if not inclusion:
-        return 0.0
-
-    met = sum(1 for r in inclusion if r.eligible == "true")
-    triggered_exclusion = any(
-        r.eligible == "false" and r.confidence > EXCLUSION_CONFIDENCE_THRESHOLD
-        for r in exclusion
-    )
-
-    base_score = met / len(inclusion)
-    return 0.0 if triggered_exclusion else base_score
+def compute_match_score(overall_score: float, hard_exclusion: bool) -> float:
+    return 0.0 if hard_exclusion else overall_score
 
 
 # ── Claude matcher (primary) ──────────────────────────────────────────────────
@@ -211,44 +230,35 @@ class ClaudeMatcher:
     def match_trial(self, profile: PatientProfile, trial: Trial) -> MatchResult:
         criteria = parse_criteria(trial.eligibility_criteria_raw)
         patient_text = _patient_profile_to_text(profile)
-        criterion_results: list[CriterionResult] = []
 
-        for ctype in ("inclusion", "exclusion"):
-            for ctext in criteria.get(ctype, []):
-                result_dict = _call_claude_for_criterion(
-                    self.client, patient_text, ctype, ctext
-                )
-                criterion_results.append(
-                    CriterionResult(
-                        criterion_text=ctext,
-                        criterion_type=ctype,
-                        eligible=result_dict.get("eligible", "uncertain"),
-                        confidence=float(result_dict.get("confidence", 0.5)),
-                        reasoning=result_dict.get("reasoning", ""),
-                        relevant_patient_info=result_dict.get(
-                            "relevant_patient_info", "not mentioned"
-                        ),
-                    )
-                )
+        result_dict = _call_claude_for_trial(
+            self.client,
+            patient_text,
+            criteria.get("inclusion", []),
+            criteria.get("exclusion", []),
+        )
 
-        score = compute_match_score(criterion_results)
+        overall_score = float(result_dict.get("overall_score", 0.0))
+        hard_exclusion = bool(result_dict.get("hard_exclusion", False))
+        met_criteria = result_dict.get("met_criteria", [])
+        failed_criteria = result_dict.get("failed_criteria", [])
+        uncertain_criteria = result_dict.get("uncertain_criteria", [])
+        exclusion_reason = result_dict.get("exclusion_reason") or None
+        reasoning = result_dict.get("reasoning", "")
 
-        inc_results = [r for r in criterion_results if r.criterion_type == "inclusion"]
-        exc_results = [r for r in criterion_results if r.criterion_type == "exclusion"]
+        score = compute_match_score(overall_score, hard_exclusion)
 
         return MatchResult(
             trial=trial,
-            criterion_results=criterion_results,
+            overall_score=overall_score,
+            met_criteria=met_criteria,
+            failed_criteria=failed_criteria,
+            uncertain_criteria=uncertain_criteria,
+            hard_exclusion=hard_exclusion,
+            exclusion_reason=exclusion_reason,
+            reasoning=reasoning,
             match_score=score,
-            met_inclusion=sum(1 for r in inc_results if r.eligible == "true"),
-            failed_inclusion=sum(1 for r in inc_results if r.eligible == "false"),
-            triggered_exclusion=sum(
-                1
-                for r in exc_results
-                if r.eligible == "false"
-                and r.confidence > EXCLUSION_CONFIDENCE_THRESHOLD
-            ),
-            uncertain_count=sum(1 for r in criterion_results if r.eligible == "uncertain"),
+            uncertain_count=len(uncertain_criteria),
         )
 
     def match_trials(
@@ -257,94 +267,5 @@ class ClaudeMatcher:
         results = []
         for trial in trials[:MAX_TRIALS_TO_MATCH]:
             logger.info(f"Matching trial {trial.nct_id}: {trial.title[:60]}")
-            results.append(self.match_trial(profile, trial))
-        return results
-
-
-# ── GPT-4o baseline matcher ───────────────────────────────────────────────────
-
-class GPT4oMatcher:
-    """Baseline comparison matcher using OpenAI GPT-4o. Requires OPENAI_API_KEY."""
-
-    def __init__(self):
-        if not OPENAI_API_KEY:
-            raise RuntimeError("OPENAI_API_KEY not set; cannot use GPT4oMatcher")
-        import openai
-        self.client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
-    def _call_for_criterion(
-        self,
-        patient_text: str,
-        criterion_type: str,
-        criterion_text: str,
-    ) -> dict:
-        prompt = _MATCH_PROMPT.format(
-            patient_profile_text=patient_text,
-            inclusion_or_exclusion=criterion_type,
-            criterion_text=criterion_text,
-        )
-        response = self.client.chat.completions.create(
-            model=BASELINE_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=512,
-        )
-        raw = response.choices[0].message.content.strip()
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning("GPT-4o returned malformed JSON for criterion")
-            return {
-                "eligible": "uncertain",
-                "confidence": 0.5,
-                "reasoning": "Parse error",
-                "relevant_patient_info": "not mentioned",
-            }
-
-    def match_trial(self, profile: PatientProfile, trial: Trial) -> MatchResult:
-        criteria = parse_criteria(trial.eligibility_criteria_raw)
-        patient_text = _patient_profile_to_text(profile)
-        criterion_results: list[CriterionResult] = []
-
-        for ctype in ("inclusion", "exclusion"):
-            for ctext in criteria.get(ctype, []):
-                result_dict = self._call_for_criterion(patient_text, ctype, ctext)
-                criterion_results.append(
-                    CriterionResult(
-                        criterion_text=ctext,
-                        criterion_type=ctype,
-                        eligible=result_dict.get("eligible", "uncertain"),
-                        confidence=float(result_dict.get("confidence", 0.5)),
-                        reasoning=result_dict.get("reasoning", ""),
-                        relevant_patient_info=result_dict.get(
-                            "relevant_patient_info", "not mentioned"
-                        ),
-                    )
-                )
-
-        score = compute_match_score(criterion_results)
-        inc_results = [r for r in criterion_results if r.criterion_type == "inclusion"]
-        exc_results = [r for r in criterion_results if r.criterion_type == "exclusion"]
-
-        return MatchResult(
-            trial=trial,
-            criterion_results=criterion_results,
-            match_score=score,
-            met_inclusion=sum(1 for r in inc_results if r.eligible == "true"),
-            failed_inclusion=sum(1 for r in inc_results if r.eligible == "false"),
-            triggered_exclusion=sum(
-                1
-                for r in exc_results
-                if r.eligible == "false"
-                and r.confidence > EXCLUSION_CONFIDENCE_THRESHOLD
-            ),
-            uncertain_count=sum(1 for r in criterion_results if r.eligible == "uncertain"),
-        )
-
-    def match_trials(
-        self, profile: PatientProfile, trials: list[Trial]
-    ) -> list[MatchResult]:
-        results = []
-        for trial in trials[:MAX_TRIALS_TO_MATCH]:
-            logger.info(f"[GPT-4o] Matching trial {trial.nct_id}")
             results.append(self.match_trial(profile, trial))
         return results
