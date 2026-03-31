@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from config import SAMPLE_PATIENTS_DIR
@@ -33,16 +34,16 @@ from pipeline.retriever import retrieve_from_corpus, retrieve_trials
 
 logger = logging.getLogger(__name__)
 
-# ── TREC data URLs (TrialGPT FTP mirror, publicly accessible) ────────────────
+# ── TREC data URLs ────────────────────────────────────────────────────────────
 
 _TREC_2021_CORPUS_URL = (
     "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_corpus.jsonl"
 )
 _TREC_2021_TOPICS_URL = (
-    "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_topics.json"
+    "https://trec.nist.gov/data/trials/topics2021.xml"
 )
 _TREC_2021_QRELS_URL = (
-    "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_qrels.json"
+    "https://trec.nist.gov/data/trials/qrels2021.txt"
 )
 
 _TREC_DATA_DIR = Path("data/trec_2021")
@@ -72,8 +73,8 @@ def _ensure_trec_data() -> bool:
     """
     files = {
         "corpus": (_TREC_2021_CORPUS_URL, _TREC_DATA_DIR / "corpus.jsonl"),
-        "topics": (_TREC_2021_TOPICS_URL, _TREC_DATA_DIR / "topics.json"),
-        "qrels":  (_TREC_2021_QRELS_URL,  _TREC_DATA_DIR / "qrels.json"),
+        "topics": (_TREC_2021_TOPICS_URL, _TREC_DATA_DIR / "topics2021.xml"),
+        "qrels":  (_TREC_2021_QRELS_URL,  _TREC_DATA_DIR / "qrels2021.txt"),
     }
     all_ok = True
     for name, (url, dest) in files.items():
@@ -86,24 +87,52 @@ def _ensure_trec_data() -> bool:
 # ── TREC data loaders ─────────────────────────────────────────────────────────
 
 def _load_topics() -> dict[str, str]:
-    """Return {topic_id: patient_note_text}."""
-    path = _TREC_DATA_DIR / "topics.json"
-    with open(path) as f:
-        raw = json.load(f)
-    # TREC topics format: list of {number, text} or dict keyed by topic id
-    if isinstance(raw, list):
-        return {str(t["number"]): t["text"] for t in raw}
-    return {str(k): v for k, v in raw.items()}
+    """
+    Parse topics2021.xml and return {topic_id: patient_note_text}.
+
+    Expected XML format:
+        <topics>
+          <topic number="1">
+            <text>Patient description...</text>
+          </topic>
+        </topics>
+    """
+    path = _TREC_DATA_DIR / "topics2021.xml"
+    tree = ET.parse(path)
+    root = tree.getroot()
+    topics = {}
+    for topic in root.findall("topic"):
+        number = topic.get("number", "").strip()
+        text_el = topic.find("text")
+        text = text_el.text.strip() if text_el is not None and text_el.text else ""
+        if number:
+            topics[number] = text
+    return topics
 
 
 def _load_qrels() -> dict[str, dict[str, int]]:
     """
-    Return {topic_id: {nct_id: relevance_grade}}.
+    Parse qrels2021.txt and return {topic_id: {nct_id: relevance_grade}}.
+
+    Plain-text format (whitespace-separated):
+        topic_id  iteration  nct_id  relevance
+    e.g.: 1  0  NCT04280705  2
+
     Relevance grades: 0 = not relevant, 1 = partially relevant, 2 = highly relevant.
     """
-    path = _TREC_DATA_DIR / "qrels.json"
+    path = _TREC_DATA_DIR / "qrels2021.txt"
+    qrels: dict[str, dict[str, int]] = {}
     with open(path) as f:
-        return json.load(f)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            topic_id, _iteration, nct_id, relevance = parts[0], parts[1], parts[2], parts[3]
+            qrels.setdefault(topic_id, {})[nct_id] = int(relevance)
+    return qrels
 
 
 # ── TREC benchmark runner ─────────────────────────────────────────────────────
@@ -128,11 +157,11 @@ def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
     print("\nChecking TREC 2021 data...")
     if not _ensure_trec_data():
         print(
-            "\n[Error] Could not download TREC 2021 data from FTP mirror.\n"
+            "\n[Error] Could not download TREC 2021 data.\n"
             "Manual download instructions:\n"
             "  Corpus: https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_corpus.jsonl\n"
-            "  Topics: https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_topics.json\n"
-            "  Qrels:  https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_qrels.json\n"
+            "  Topics: https://trec.nist.gov/data/trials/topics2021.xml\n"
+            "  Qrels:  https://trec.nist.gov/data/trials/qrels2021.txt\n"
             f"Place all three files in: {_TREC_DATA_DIR.resolve()}\n"
         )
         return []
