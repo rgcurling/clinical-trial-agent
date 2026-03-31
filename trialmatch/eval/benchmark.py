@@ -103,8 +103,7 @@ def _load_topics() -> dict[str, str]:
     topics = {}
     for topic in root.findall("topic"):
         number = topic.get("number", "").strip()
-        text_el = topic.find("text")
-        text = text_el.text.strip() if text_el is not None and text_el.text else ""
+        text = topic.text.strip() if topic.text else ""
         if number:
             topics[number] = text
     return topics

@@ -1,0 +1,11 @@
+Checking data files...
+Data files present: True
+Loading topics...
+Topics loaded: 75
+First topic ID: 1
+First topic text (first 100 chars): Patient is a 45-year-old man with a history of anaplastic astrocytoma of the spine complicated by se
+Loading qrels...
+Qrel topics: 75
+First qrel topic 1: 407 judgments
+Sample: NCT00002569 -> relevance 1
+All good!
