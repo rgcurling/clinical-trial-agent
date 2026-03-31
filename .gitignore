@@ -1,0 +1,16 @@
+# Large TREC corpus (131 MB — exceeds GitHub 100 MB limit)
+trialmatch/data/trec_2021/corpus.jsonl
+
+# TF-IDF cache generated from corpus
+trialmatch/data/trec_2021/*.pkl
+
+# API response cache
+trialmatch/data/cached_trials/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Env
+.env
