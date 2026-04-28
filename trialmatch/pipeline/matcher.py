@@ -7,18 +7,15 @@ met/failed/uncertain criteria, and exclusion assessment.
 
 import json
 import logging
+import os
 import re
+import time
+from dataclasses import replace
 from typing import Optional
 
 import anthropic
 
-from config import (
-    ANTHROPIC_API_KEY,
-    BASELINE_MODEL,
-    MAX_TRIALS_TO_MATCH,
-    OPENAI_API_KEY,
-    PRIMARY_MODEL,
-)
+from config import ANTHROPIC_API_KEY, BASELINE_MODEL, MAX_TRIALS_TO_MATCH, PRIMARY_MODEL
 from pipeline.models import (
     MatchResult,
     PatientProfile,
@@ -275,130 +272,201 @@ class ClaudeMatcher:
 
 # ── Critic agent (Part 2) ─────────────────────────────────────────────────────
 
+def call_gpt4(prompt: str, temperature: float = 0.0) -> str:
+    """
+    Call OpenAI GPT-4o API with the same simple interface as Claude helpers.
+    Requires OPENAI_API_KEY in the environment.
+    """
+    import openai
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable not set")
+
+    client = openai.OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=BASELINE_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content or ""
+
+
 _CRITIC_PROMPT = """\
-You are a second independent clinical trial reviewer. The first reviewer assessed a patient \
-for trial eligibility and concluded:
-
-Agent 1 Assessment:
-- Overall score: {agent1_score:.2f}
-- Met criteria: {met_criteria}
-- Failed criteria: {failed_criteria}
-- Uncertain criteria: {uncertain_criteria}
-- Hard exclusion triggered: {hard_exclusion}
-
-Now independently assess the same patient-trial pair. You see the patient profile and trial \
-criteria, but NOT Agent 1's detailed reasoning — only their scores and category assignments.
+You are an independent clinical trial eligibility reviewer (Agent 2).
 
 Patient Profile:
 {patient_profile_text}
 
-Inclusion Criteria:
-{inclusion_criteria}
+Trial Eligibility Criteria:
+{eligibility_criteria}
 
-Exclusion Criteria:
-{exclusion_criteria}
+First Reviewer's Assessment (Agent 1):
+- Overall score: {agent1_score:.2f}
+- Met criteria: {met_criteria}
+- Hard exclusions: {hard_exclusion}
 
-Return ONLY valid JSON with no other text:
+Your Task:
+Independently assess this patient's eligibility for this trial WITHOUT being biased by Agent 1's reasoning.
+
+Output JSON format:
 {{
-  "agree": <true if you reach the same overall conclusion as Agent 1, else false>,
-  "your_score": <float 0.0-1.0, your independent assessment>,
-  "discrepancies": [<criterion text for each criterion where you disagree with Agent 1>],
-  "recommendation": "<accept_agent1 | override | flag_uncertain>"
+  "agree": true/false,
+  "your_score": 0.0-1.0,
+  "discrepancies": ["criterion X differs because...", "criterion Y..."],
+  "recommendation": "accept_agent1" | "override" | "flag_uncertain"
 }}
 
-Rules:
-- Set "agree" to true only when your_score is within 0.2 of agent1_score AND discrepancies is empty
-- "recommendation" must be "accept_agent1" when agree=true, "flag_uncertain" for exactly 1 \
-discrepancy, "override" for 2+ discrepancies
-- Only list a criterion in discrepancies if Agent 1 classified it in a category you disagree with\
+Guidelines:
+- "accept_agent1": You agree, use Agent 1's assessment
+- "override": You strongly disagree (2 or more criteria differ), use your score instead
+- "flag_uncertain": 1 criterion differs or the case is borderline, flag for human review
 """
 
 
+def _match_result_to_agent_summary(agent1_output) -> dict:
+    if isinstance(agent1_output, MatchResult):
+        return {
+            "overall_score": agent1_output.overall_score,
+            "met_criteria": agent1_output.met_criteria,
+            "hard_exclusion": agent1_output.hard_exclusion,
+        }
+    return {
+        "overall_score": float(agent1_output.get("overall_score", 0.0)),
+        "met_criteria": agent1_output.get("met_criteria", []),
+        "hard_exclusion": agent1_output.get("hard_exclusion", []),
+    }
+
+
+def _coerce_patient_text(patient_profile) -> str:
+    if isinstance(patient_profile, PatientProfile):
+        return _patient_profile_to_text(patient_profile)
+    return str(patient_profile)
+
+
+def _coerce_trial_criteria(trial_data) -> str:
+    if isinstance(trial_data, Trial):
+        return trial_data.eligibility_criteria_raw or ""
+    return (
+        trial_data.get("eligibility_criteria")
+        or trial_data.get("eligibility_criteria_raw")
+        or trial_data.get("text")
+        or ""
+    )
+
+
+def _parse_json_response(raw: str) -> dict:
+    raw = _strip_fences(raw.strip())
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        repaired = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+        if repaired:
+            return json.loads(repaired.group(0))
+        raise
+
+
 def critic_review(
-    patient_profile: PatientProfile,
-    trial: Trial,
-    agent1_result: MatchResult,
+    patient_profile,
+    trial_data,
+    agent1_output,
 ) -> dict:
     """
-    Second independent review using OpenAI GPT-4o (different model = genuine new perspective).
-    Agent 2 sees patient profile + criteria + Agent 1's scores/categories only — not reasoning.
-    Returns dict: {agree, your_score, discrepancies, recommendation}.
-    Retries up to 3 times on failure; returns accept_agent1 default on all failures.
-    """
-    import openai
+    Independent eligibility review by GPT-4o (Agent 2).
 
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    criteria = parse_criteria(trial.eligibility_criteria_raw)
-    patient_text = _patient_profile_to_text(patient_profile)
+    Agent 2 sees patient profile, full eligibility criteria, and Agent 1's
+    summary only: score, met criteria, and hard exclusions. It does not see
+    Agent 1's detailed reasoning.
+
+    Returns dict: {agree, your_score, discrepancies, recommendation}.
+    """
+    agent1_summary = _match_result_to_agent_summary(agent1_output)
 
     prompt = _CRITIC_PROMPT.format(
-        agent1_score=agent1_result.overall_score,
-        met_criteria=agent1_result.met_criteria or "(none)",
-        failed_criteria=agent1_result.failed_criteria or "(none)",
-        uncertain_criteria=agent1_result.uncertain_criteria or "(none)",
-        hard_exclusion=agent1_result.hard_exclusion,
-        patient_profile_text=patient_text,
-        inclusion_criteria=_format_criteria_list(criteria.get("inclusion", [])),
-        exclusion_criteria=_format_criteria_list(criteria.get("exclusion", [])),
+        patient_profile_text=_coerce_patient_text(patient_profile),
+        eligibility_criteria=_coerce_trial_criteria(trial_data),
+        agent1_score=agent1_summary["overall_score"],
+        met_criteria=agent1_summary.get("met_criteria", []),
+        hard_exclusion=agent1_summary.get("hard_exclusion", []),
     )
 
     for attempt in range(3):
         try:
-            response = client.chat.completions.create(
-                model=BASELINE_MODEL,
-                temperature=0.0,
-                max_tokens=512,
-                response_format={"type": "json_object"},
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = response.choices[0].message.content.strip()
-            return json.loads(raw)
+            raw = call_gpt4(prompt, temperature=0.0)
+            parsed = _parse_json_response(raw)
+            return {
+                "agree": bool(parsed.get("agree", False)),
+                "your_score": float(parsed.get("your_score", agent1_summary["overall_score"])),
+                "discrepancies": parsed.get("discrepancies", []) or [],
+                "recommendation": parsed.get("recommendation", "flag_uncertain"),
+            }
         except Exception as exc:
             logger.warning(f"Critic (GPT-4o) attempt {attempt + 1}/3 failed: {exc}")
+            if attempt < 2:
+                time.sleep(2 ** attempt)
 
     logger.error("All critic retry attempts failed; defaulting to accept_agent1")
     return {
         "agree": True,
-        "your_score": agent1_result.overall_score,
+        "your_score": agent1_summary["overall_score"],
         "discrepancies": [],
         "recommendation": "accept_agent1",
     }
 
 
 def resolve_discrepancies(
-    agent1_result: MatchResult,
+    agent1_output: MatchResult,
     agent2_output: dict,
     topic_id: Optional[str] = None,
     nct_id: Optional[str] = None,
 ) -> MatchResult:
     """
     Merge Agent 1 and Agent 2 assessments per the critic protocol:
-      - 0 discrepancies / agree=True  → return agent1_result unchanged
-      - 1 discrepancy                 → set critic_flagged=True, keep score
-      - ≥2 discrepancies              → set overall_score=0.5, uncertain=True
+      - agree=True                    → return Agent 1 unchanged
+      - recommendation=override       → use Agent 2 score, set critic_override=True
+      - recommendation=flag_uncertain → keep Agent 1 score, set critic_flagged=True
     Logs ALL disagreements to results/critic_disagreements.jsonl.
     """
-    from dataclasses import replace
-    import os
-
     agree = agent2_output.get("agree", True)
     discrepancies = agent2_output.get("discrepancies", [])
-    agent2_score = float(agent2_output.get("your_score", agent1_result.overall_score))
+    recommendation = agent2_output.get("recommendation", "accept_agent1")
+    agent2_score = float(agent2_output.get("your_score", agent1_output.overall_score))
 
-    if not agree:
-        os.makedirs("results", exist_ok=True)
-        with open("results/critic_disagreements.jsonl", "a") as f:
-            f.write(json.dumps({
-                "topic_id": topic_id,
-                "nct_id": nct_id or agent1_result.trial.nct_id,
-                "agent1_score": agent1_result.overall_score,
-                "agent2_score": agent2_score,
-                "discrepancies": discrepancies,
-            }) + "\n")
+    if agree:
+        return agent1_output
 
-    n = len(discrepancies)
-    if agree or n == 0:
-        return agent1_result
-    if n >= 2:
-        return replace(agent1_result, overall_score=0.5, match_score=0.5, uncertain=True)
-    return replace(agent1_result, critic_flagged=True)
+    resolution = "accept"
+    resolved = agent1_output
+
+    if recommendation == "override":
+        resolution = "override"
+        score = compute_match_score(agent2_score, agent1_output.hard_exclusion)
+        resolved = replace(
+            agent1_output,
+            overall_score=agent2_score,
+            match_score=score,
+            critic_override=True,
+        )
+    elif recommendation == "flag_uncertain":
+        resolution = "flag"
+        resolved = replace(
+            agent1_output,
+            critic_flagged=True,
+            uncertain=True,
+            uncertainty_reason=discrepancies,
+        )
+
+    os.makedirs("results", exist_ok=True)
+    with open("results/critic_disagreements.jsonl", "a") as f:
+        f.write(json.dumps({
+            "topic_id": topic_id,
+            "nct_id": nct_id or agent1_output.trial.nct_id,
+            "agent1_score": agent1_output.overall_score,
+            "agent2_score": agent2_score,
+            "agreed": bool(agree),
+            "discrepancies": discrepancies,
+            "resolution": resolution,
+        }) + "\n")
+
+    return resolved

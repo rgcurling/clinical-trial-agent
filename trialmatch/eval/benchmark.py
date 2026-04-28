@@ -20,8 +20,12 @@ import os
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import SAMPLE_PATIENTS_DIR
 from eval.metrics import (
@@ -107,6 +111,28 @@ def _load_qrels(data_dir: Path) -> dict[str, dict[str, int]]:
     return qrels
 
 
+def _resolve_retrieved_trials(retriever, retrieved) -> list:
+    """
+    Convert the benchmark retriever API, list[(nct_id, score)], into Trial
+    objects for the matcher. Older local retrievers that return Trial objects
+    are still accepted for compatibility.
+    """
+    if not retrieved:
+        return []
+    first = retrieved[0]
+    if hasattr(first, "nct_id"):
+        return retrieved
+
+    trials = []
+    for nct_id, _score in retrieved:
+        trial = retriever.get_trial(nct_id) if hasattr(retriever, "get_trial") else None
+        if trial is not None:
+            trials.append(trial)
+        else:
+            logger.warning(f"Retriever returned {nct_id}, but no Trial record was found")
+    return trials
+
+
 # ── TREC benchmark ────────────────────────────────────────────────────────────
 
 def run_trec_benchmark(
@@ -118,6 +144,7 @@ def run_trec_benchmark(
     output_file: Optional[str] = None,
     corpus_path: Optional[Path] = None,
     generate_explanations: bool = True,
+    resume_from: Optional[str] = None,
 ) -> dict:
     """
     Evaluate TrialMatch AI against TREC Clinical Trials 2021.
@@ -125,14 +152,15 @@ def run_trec_benchmark(
     Args:
         max_topics:           max topics to evaluate (ignored when topic_range is set)
         retriever_type:       'tfidf' or 'biomedbert'
-        use_critic:           run second Claude reviewer after each match
+        use_critic:           run GPT-4o critic after each Claude match
         topic_range:          (start, end) inclusive topic-ID filter; overrides max_topics
         output_file:          save full results dict as JSON to this path
         corpus_path:          override default corpus location
         generate_explanations: generate patient-facing cards for top-5 (needed for Part 5)
+        resume_from:          path to checkpoint JSON — skip already-completed topics
 
     Returns dict with keys: config, metrics, per_topic_results, critic_stats,
-    runtime_seconds, total_api_calls, estimated_cost_usd.
+    runtime_seconds, api_stats, estimated_cost_usd.
     """
     start_time = time.perf_counter()
 
@@ -170,6 +198,22 @@ def run_trec_benchmark(
 
     matcher = ClaudeMatcher()
 
+    # ── Resume from checkpoint ────────────────────────────────────────────────
+    per_topic_results: list[dict] = []
+    completed_ids: set[str] = set()
+    if resume_from and Path(resume_from).exists():
+        with open(resume_from) as f:
+            checkpoint = json.load(f)
+        if isinstance(checkpoint, dict):
+            per_topic_results = checkpoint.get("partial_results", {}).get(
+                "per_topic_results", []
+            )
+        else:
+            per_topic_results = checkpoint
+        completed_ids = {r["topic_id"] for r in per_topic_results}
+        print(f"Resuming from checkpoint: {len(completed_ids)} topics already done.")
+    selected_ids = [t for t in selected_ids if t not in completed_ids]
+
     # ── Progress bar ──────────────────────────────────────────────────────────
     try:
         from tqdm import tqdm
@@ -177,13 +221,15 @@ def run_trec_benchmark(
     except ImportError:
         topic_iter = selected_ids
 
-    per_topic_results: list[dict] = []
-    api_calls = 0
+    claude_calls = 0
+    gpt4_calls = 0
     critic_agreements = 0
     critic_disagreements = 0
     critic_overrides = 0
     critic_flags = 0
-    running_p5_sum = 0.0
+    running_p5_sum = sum(
+        r.get("precision_at_5", 0.0) for r in per_topic_results if "error" not in r
+    )
 
     os.makedirs("results", exist_ok=True)
 
@@ -194,18 +240,19 @@ def run_trec_benchmark(
 
         try:
             profile = extract_patient_profile(note_text)
-            api_calls += 1  # extractor may call Claude
+            claude_calls += 1  # extractor may call Claude
 
-            trials = retriever.retrieve(note_text, top_k=20)
+            retrieved = retriever.retrieve(note_text, top_k=20)
+            trials = _resolve_retrieved_trials(retriever, retrieved)
             match_results = matcher.match_trials(profile, trials)
-            api_calls += len(match_results)
+            claude_calls += len(match_results)
 
             # Apply critic if requested
             if use_critic:
                 reviewed: list = []
                 for mr in match_results:
                     agent2 = critic_review(profile, mr.trial, mr)
-                    api_calls += 1
+                    gpt4_calls += 1
                     resolved = resolve_discrepancies(
                         mr, agent2, topic_id=topic_id, nct_id=mr.trial.nct_id
                     )
@@ -232,7 +279,7 @@ def run_trec_benchmark(
             top5_details: list[dict] = []
             if generate_explanations:
                 cards = generate_all_cards(ranked)
-                api_calls += len(cards)
+                claude_calls += len(cards)
             else:
                 cards = [None] * len(ranked)
 
@@ -251,6 +298,8 @@ def run_trec_benchmark(
                     "exclusion_reason": mr.exclusion_reason,
                     "reasoning": mr.reasoning,
                     "critic_flagged": mr.critic_flagged,
+                    "critic_override": mr.critic_override,
+                    "uncertainty_reason": mr.uncertainty_reason,
                     "uncertain": mr.uncertain,
                     "trec_grade": topic_qrels.get(nct, -1),
                     "eligibility_criteria": mr.trial.eligibility_criteria_raw,
@@ -293,11 +342,20 @@ def run_trec_benchmark(
             f"(running P@5={running_mean:.3f})"
         )
 
-        # Checkpoint every 10 topics
-        if (idx + 1) % 10 == 0:
+        # Checkpoint every 5 topics
+        if (idx + 1) % 5 == 0:
             ckpt = f"results/checkpoint_topic{topic_id}.json"
             with open(ckpt, "w") as f:
-                json.dump(per_topic_results, f, indent=2)
+                json.dump(
+                    {
+                        "completed_topics": [r["topic_id"] for r in per_topic_results],
+                        "partial_results": {
+                            "per_topic_results": per_topic_results,
+                        },
+                    },
+                    f,
+                    indent=2,
+                )
             logger.info(f"Checkpoint saved → {ckpt}")
 
     # ── Aggregate metrics ─────────────────────────────────────────────────────
@@ -308,7 +366,16 @@ def run_trec_benchmark(
 
     n_critic_total = critic_agreements + critic_disagreements
     agreement_rate = (critic_agreements / n_critic_total) if n_critic_total > 0 else None
-    avg_score_delta = None  # computed in compare_runs.py from disagreements log
+
+    total_api_calls = claude_calls + gpt4_calls
+    estimated_cost = round(
+        claude_calls * (
+            _COST_PER_MATCH_CALL
+            + (_COST_PER_EXPLAIN_CALL if generate_explanations else 0.0)
+        ) / (2 if generate_explanations else 1)
+        + gpt4_calls * _COST_PER_CRITIC_CALL,
+        2,
+    )
 
     results_dict = {
         "config": {
@@ -317,10 +384,13 @@ def run_trec_benchmark(
             "topic_range": list(topic_range) if topic_range else None,
             "max_topics": max_topics,
             "generate_explanations": generate_explanations,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
         "metrics": {
             "p_at_5": round(mean_p5, 4),
             "ndcg_at_5": round(mean_ndcg5, 4),
+            "num_topics": len(valid),
+            "num_trials_evaluated": claude_calls,
         },
         "per_topic_results": per_topic_results,
         "critic_stats": {
@@ -331,15 +401,13 @@ def run_trec_benchmark(
             "flags": critic_flags,
         },
         "runtime_seconds": round(runtime, 1),
-        "total_api_calls": api_calls,
-        "estimated_cost_usd": round(
-            api_calls * (
-                _COST_PER_MATCH_CALL
-                + (_COST_PER_CRITIC_CALL if use_critic else 0.0)
-                + (_COST_PER_EXPLAIN_CALL if generate_explanations else 0.0)
-            ) / 3,   # average of the three types
-            2,
-        ),
+        "total_api_calls": total_api_calls,
+        "api_stats": {
+            "total_claude_calls": claude_calls,
+            "total_gpt4_calls": gpt4_calls,
+            "estimated_cost_usd": estimated_cost,
+        },
+        "estimated_cost_usd": estimated_cost,
     }
 
     if output_file:
@@ -511,31 +579,54 @@ def _build_parser():
         "--use-critic",
         action="store_true",
         default=False,
-        help="Enable critic agent (second Claude reviewer per trial)",
+        help="Enable GPT-4o critic agent (independent second reviewer per trial)",
     )
+    # Accept either --topic-range START END  OR  --topic-start N --topic-end N
     p.add_argument(
         "--topic-range",
         nargs=2,
         type=int,
         metavar=("START", "END"),
-        help="Inclusive topic-ID range to evaluate, e.g. --topic-range 26 40",
+        help="Inclusive topic-ID range, e.g. --topic-range 26 40",
+    )
+    p.add_argument(
+        "--topic-start",
+        type=int,
+        metavar="N",
+        help="Start of topic range (alternative to --topic-range)",
+    )
+    p.add_argument(
+        "--topic-end",
+        type=int,
+        metavar="N",
+        help="End of topic range (alternative to --topic-range)",
     )
     p.add_argument(
         "--max-topics",
         type=int,
         default=10,
-        help="Max topics to evaluate when --topic-range is not set (default: 10)",
+        help="Max topics when no range is specified (default: 10)",
     )
     p.add_argument(
         "--output",
         metavar="PATH",
-        help="Save results JSON to this path (default: results/run_<retriever>.json)",
+        help="Save results JSON to this path",
     )
     p.add_argument(
         "--no-explanations",
         action="store_true",
         default=False,
         help="Skip explanation generation (faster, but Part 5 metrics unavailable)",
+    )
+    p.add_argument(
+        "--resume-from",
+        metavar="CHECKPOINT",
+        help="Resume from a checkpoint JSON (skip already-completed topics)",
+    )
+    p.add_argument(
+        "--resume-from-checkpoint",
+        metavar="CHECKPOINT",
+        help="Alias for --resume-from",
     )
     return p
 
@@ -555,7 +646,14 @@ if __name__ == "__main__":
 
     args = _build_parser().parse_args()
 
-    tr = tuple(args.topic_range) if args.topic_range else None
+    # Resolve topic range from either --topic-range or --topic-start/--topic-end
+    if args.topic_range:
+        tr = tuple(args.topic_range)
+    elif args.topic_start is not None and args.topic_end is not None:
+        tr = (args.topic_start, args.topic_end)
+    else:
+        tr = None
+
     out = args.output or f"results/run_{args.retriever}{'_critic' if args.use_critic else ''}.json"
 
     results = run_trec_benchmark(
@@ -565,10 +663,13 @@ if __name__ == "__main__":
         topic_range=tr,
         output_file=out,
         generate_explanations=not args.no_explanations,
+        resume_from=args.resume_from or args.resume_from_checkpoint,
     )
     print_trec_summary(results)
+    api = results.get("api_stats", {})
     print(
         f"\nRuntime: {results.get('runtime_seconds', 0):.1f}s  |  "
-        f"API calls: {results.get('total_api_calls', 0)}  |  "
+        f"Claude calls: {api.get('total_claude_calls', 0)}  |  "
+        f"GPT-4o calls: {api.get('total_gpt4_calls', 0)}  |  "
         f"Est. cost: ${results.get('estimated_cost_usd', 0):.2f}"
     )

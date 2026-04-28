@@ -39,3 +39,5 @@ class MatchResult:
     uncertain_count: int        # len(uncertain_criteria)
     uncertain: bool = False     # critic set this when ≥2 discrepancies found
     critic_flagged: bool = False  # critic set this when exactly 1 discrepancy found
+    critic_override: bool = False
+    uncertainty_reason: list[str] = field(default_factory=list)

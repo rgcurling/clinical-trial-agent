@@ -298,14 +298,118 @@ def retrieve_from_corpus(
 # ── Retriever classes (object-oriented wrappers for benchmark) ────────────────
 
 class TfidfRetriever:
-    """Wraps retrieve_from_corpus as a stateful object with .retrieve()."""
+    """
+    TF-IDF retriever for benchmark runs.
 
-    def __init__(self, corpus_path):
+    The benchmark-facing API returns ranked ``(nct_id, score)`` tuples so it
+    matches BiomedBERTRetriever. Use ``get_trial`` to resolve an ID back to the
+    Trial object needed by the matcher.
+    """
+
+    def __init__(self, corpus_path="data/trec_2021/corpus.jsonl"):
+        import pickle
         from pathlib import Path
-        self._corpus_path = Path(corpus_path)
 
-    def retrieve(self, query: str, top_k: int = 20) -> list[Trial]:
-        return retrieve_from_corpus(query, self._corpus_path, top_k=top_k)
+        from sklearn.feature_extraction.text import TfidfVectorizer
+
+        self._corpus_path = Path(corpus_path)
+        self._cache_path = self._corpus_path.with_name(
+            self._corpus_path.stem + ".tfidf_cache.pkl"
+        )
+        self._trials: list[Trial] = []
+        self._trial_by_id: dict[str, Trial] = {}
+        self._vectorizer: Optional[TfidfVectorizer] = None
+        self._matrix = None
+
+        if self._cache_path.exists():
+            logger.info(f"Loading TF-IDF cache from {self._cache_path}")
+            with open(self._cache_path, "rb") as f:
+                cached = pickle.load(f)
+            self._trials = cached["trials"]
+            self._vectorizer = cached["vectorizer"]
+            self._matrix = cached["matrix"]
+        else:
+            if not self._corpus_path.exists():
+                raise FileNotFoundError(
+                    f"TREC corpus not found at {self._corpus_path.resolve()}"
+                )
+
+            logger.info(f"Building TF-IDF index from {self._corpus_path}...")
+            docs: list[str] = []
+            with open(self._corpus_path) as f:
+                for line_no, line in enumerate(f, start=1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(
+                            f"Malformed JSON in {self._corpus_path} at line {line_no}: {exc}"
+                        ) from exc
+
+                    trial = self._record_to_trial(record)
+                    if trial is None:
+                        continue
+                    self._trials.append(trial)
+                    docs.append(
+                        f"{trial.title} {' '.join(trial.conditions)} "
+                        f"{trial.eligibility_criteria_raw}"
+                    )
+
+            self._vectorizer = TfidfVectorizer(max_features=50_000, sublinear_tf=True)
+            self._matrix = self._vectorizer.fit_transform(docs)
+            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._cache_path, "wb") as f:
+                pickle.dump(
+                    {
+                        "trials": self._trials,
+                        "vectorizer": self._vectorizer,
+                        "matrix": self._matrix,
+                    },
+                    f,
+                )
+
+        self._trial_by_id = {trial.nct_id: trial for trial in self._trials}
+        logger.info(f"TF-IDF retriever ready with {len(self._trials):,} trials")
+
+    @staticmethod
+    def _record_to_trial(record: dict) -> Optional[Trial]:
+        nct_id = record.get("nct_id") or record.get("_id", "")
+        if not nct_id:
+            return None
+
+        title = record.get("title", "") or ""
+        condition = record.get("condition", "")
+        meta = record.get("metadata", {})
+        if not condition:
+            conditions = meta.get("conditions", [])
+            condition = " ".join(conditions) if isinstance(conditions, list) else str(conditions)
+        eligibility = record.get("eligibility_criteria", "") or record.get("text", "") or ""
+        phase = meta.get("phase") or meta.get("phases")
+        if isinstance(phase, list):
+            phase = phase[0] if phase else None
+        status = meta.get("overall_status", "RECRUITING")
+
+        return Trial(
+            nct_id=nct_id,
+            title=title,
+            phase=phase,
+            status=status,
+            conditions=[condition] if condition else [],
+            eligibility_criteria_raw=eligibility,
+        )
+
+    def get_trial(self, nct_id: str) -> Optional[Trial]:
+        return self._trial_by_id.get(nct_id)
+
+    def retrieve(self, query: str, top_k: int = 20) -> list[tuple[str, float]]:
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        query_vec = self._vectorizer.transform([query])
+        sims = cosine_similarity(query_vec, self._matrix)[0]
+        top_indices = sims.argsort()[::-1][:top_k]
+        return [(self._trials[i].nct_id, float(sims[i])) for i in top_indices]
 
 
 class BiomedBERTRetriever:
@@ -319,11 +423,20 @@ class BiomedBERTRetriever:
 
     _MODEL_NAME = "NeuML/pubmedbert-base-embeddings"
 
-    def __init__(self, corpus_path):
+    def __init__(
+        self,
+        corpus_path="data/trec_2021/corpus.jsonl",
+        cache_path="biomedbert_cache.pkl",
+    ):
         from pathlib import Path
         self._corpus_path = Path(corpus_path)
-        self._cache_path = self._corpus_path.with_name("biomedbert_cache.pkl")
+        cache_path = Path(cache_path)
+        self._cache_path = (
+            cache_path if cache_path.is_absolute() else self._corpus_path.with_name(cache_path.name)
+        )
         self._trials: list[Trial] = []
+        self._trial_ids: list[str] = []
+        self._trial_by_id: dict[str, Trial] = {}
         self._embeddings = None   # numpy array (n_trials, dim)
         self._model = None        # loaded lazily on first encode
         self._load_or_build_index()
@@ -332,9 +445,20 @@ class BiomedBERTRetriever:
 
     def _get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
-            logger.info(f"Loading {self._MODEL_NAME}...")
-            self._model = SentenceTransformer(self._MODEL_NAME)
+            try:
+                from sentence_transformers import SentenceTransformer
+                logger.info(f"Loading {self._MODEL_NAME}...")
+                self._model = SentenceTransformer(self._MODEL_NAME)
+            except ImportError as exc:
+                raise RuntimeError(
+                    "sentence-transformers is required for BiomedBERT retrieval. "
+                    "Install it with: pip install sentence-transformers"
+                ) from exc
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Could not load {self._MODEL_NAME}. Check network access for "
+                    "the first model download, or verify the local model cache."
+                ) from exc
         return self._model
 
     @staticmethod
@@ -351,13 +475,24 @@ class BiomedBERTRetriever:
 
     def _load_or_build_index(self):
         import pickle
+        import numpy as np
 
         if self._cache_path.exists():
             logger.info(f"Loading BiomedBERT cache from {self._cache_path}")
             with open(self._cache_path, "rb") as f:
                 cached = pickle.load(f)
-            self._trials = cached["trials"]
-            self._embeddings = cached["embeddings"]
+            if isinstance(cached, tuple):
+                self._embeddings, self._trial_ids = cached
+                self._load_trials_from_corpus()
+            else:
+                self._trials = cached["trials"]
+                self._embeddings = cached["embeddings"]
+                self._trial_ids = cached.get(
+                    "trial_ids", [trial.nct_id for trial in self._trials]
+                )
+            norms = np.linalg.norm(self._embeddings, axis=1, keepdims=True)
+            self._embeddings = self._embeddings / np.clip(norms, a_min=1e-12, a_max=None)
+            self._trial_by_id = {trial.nct_id: trial for trial in self._trials}
             logger.info(f"Loaded {len(self._trials):,} trial embeddings from cache")
             return
 
@@ -368,36 +503,30 @@ class BiomedBERTRetriever:
         docs: list[str] = []
         trials: list[Trial] = []
 
+        if not self._corpus_path.exists():
+            raise FileNotFoundError(
+                f"TREC corpus not found at {self._corpus_path.resolve()}"
+            )
+
         with open(self._corpus_path) as f:
-            for line in f:
+            for line_no, line in enumerate(f, start=1):
                 line = line.strip()
                 if not line:
                     continue
-                record = json.loads(line)
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"Malformed JSON in {self._corpus_path} at line {line_no}: {exc}"
+                    ) from exc
                 nct_id = record.get("nct_id") or record.get("_id", "")
                 if not nct_id:
                     continue
 
-                title = record.get("title", "")
-                condition = record.get("condition", "")
-                if not condition:
-                    meta = record.get("metadata", {})
-                    conditions = meta.get("conditions", [])
-                    condition = (
-                        " ".join(conditions)
-                        if isinstance(conditions, list)
-                        else str(conditions)
-                    )
-                eligibility = record.get("eligibility_criteria", "") or record.get("text", "")
-
-                trials.append(Trial(
-                    nct_id=nct_id,
-                    title=title,
-                    phase=None,
-                    status="RECRUITING",
-                    conditions=[condition] if condition else [],
-                    eligibility_criteria_raw=eligibility,
-                ))
+                trial = TfidfRetriever._record_to_trial(record)
+                if trial is None:
+                    continue
+                trials.append(trial)
                 docs.append(self._build_doc(record))
 
         model = self._get_model()
@@ -408,23 +537,46 @@ class BiomedBERTRetriever:
             show_progress_bar=True,
             convert_to_numpy=True,
         )
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        embeddings = embeddings / np.clip(norms, a_min=1e-12, a_max=None)
 
         self._trials = trials
+        self._trial_ids = [trial.nct_id for trial in trials]
+        self._trial_by_id = {trial.nct_id: trial for trial in trials}
         self._embeddings = embeddings
 
         logger.info(f"Saving BiomedBERT cache to {self._cache_path}...")
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._cache_path, "wb") as f:
-            pickle.dump({"trials": trials, "embeddings": embeddings}, f)
+            pickle.dump((embeddings, self._trial_ids), f)
         logger.info("BiomedBERT cache saved.")
+
+    def _load_trials_from_corpus(self) -> None:
+        trials: list[Trial] = []
+        trial_id_set = set(self._trial_ids)
+        with open(self._corpus_path) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                trial = TfidfRetriever._record_to_trial(record)
+                if trial is not None and trial.nct_id in trial_id_set:
+                    trials.append(trial)
+        trial_by_id = {trial.nct_id: trial for trial in trials}
+        self._trials = [trial_by_id[nct_id] for nct_id in self._trial_ids if nct_id in trial_by_id]
 
     # ── public API ─────────────────────────────────────────────────────────────
 
-    def retrieve(self, query: str, top_k: int = 20) -> list[Trial]:
-        from sklearn.metrics.pairwise import cosine_similarity
+    def get_trial(self, nct_id: str) -> Optional[Trial]:
+        return self._trial_by_id.get(nct_id)
+
+    def retrieve(self, query: str, top_k: int = 20) -> list[tuple[str, float]]:
+        import numpy as np
 
         model = self._get_model()
-        query_emb = model.encode([query], convert_to_numpy=True)
-        sims = cosine_similarity(query_emb, self._embeddings)[0]
+        query_emb = model.encode(query, convert_to_numpy=True)
+        query_emb = query_emb / max(float(np.linalg.norm(query_emb)), 1e-12)
+        sims = np.dot(self._embeddings, query_emb)
+        sims = (sims + 1.0) / 2.0
         top_indices = sims.argsort()[::-1][:top_k]
-        return [self._trials[i] for i in top_indices]
+        return [(self._trial_ids[i], float(sims[i])) for i in top_indices]
