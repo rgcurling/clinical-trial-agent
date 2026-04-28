@@ -37,3 +37,5 @@ class MatchResult:
     reasoning: str
     match_score: float          # 0.0 if hard_exclusion else overall_score
     uncertain_count: int        # len(uncertain_criteria)
+    uncertain: bool = False     # critic set this when ≥2 discrepancies found
+    critic_flagged: bool = False  # critic set this when exactly 1 discrepancy found

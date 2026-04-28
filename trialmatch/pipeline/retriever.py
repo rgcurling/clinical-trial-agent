@@ -293,3 +293,138 @@ def retrieve_from_corpus(
     sims = cosine_similarity(query_vec, matrix)[0]
     top_indices = sims.argsort()[::-1][:top_k]
     return [trials[i] for i in top_indices]
+
+
+# ── Retriever classes (object-oriented wrappers for benchmark) ────────────────
+
+class TfidfRetriever:
+    """Wraps retrieve_from_corpus as a stateful object with .retrieve()."""
+
+    def __init__(self, corpus_path):
+        from pathlib import Path
+        self._corpus_path = Path(corpus_path)
+
+    def retrieve(self, query: str, top_k: int = 20) -> list[Trial]:
+        return retrieve_from_corpus(query, self._corpus_path, top_k=top_k)
+
+
+class BiomedBERTRetriever:
+    """
+    Semantic retriever using PubMedBERT sentence embeddings.
+
+    First instantiation encodes the full 26K corpus (5-10 min on CPU, faster
+    with MPS/CUDA) and caches to biomedbert_cache.pkl next to corpus_path.
+    Subsequent instantiations load from cache in seconds.
+    """
+
+    _MODEL_NAME = "NeuML/pubmedbert-base-embeddings"
+
+    def __init__(self, corpus_path):
+        from pathlib import Path
+        self._corpus_path = Path(corpus_path)
+        self._cache_path = self._corpus_path.with_name("biomedbert_cache.pkl")
+        self._trials: list[Trial] = []
+        self._embeddings = None   # numpy array (n_trials, dim)
+        self._model = None        # loaded lazily on first encode
+        self._load_or_build_index()
+
+    # ── private ────────────────────────────────────────────────────────────────
+
+    def _get_model(self):
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            logger.info(f"Loading {self._MODEL_NAME}...")
+            self._model = SentenceTransformer(self._MODEL_NAME)
+        return self._model
+
+    @staticmethod
+    def _build_doc(record: dict) -> str:
+        title = record.get("title", "")
+        summary = (
+            record.get("summary", "")
+            or record.get("brief_summary", "")
+            or record.get("detailed_description", "")
+            or ""
+        )
+        eligibility = record.get("eligibility_criteria", "") or record.get("text", "")
+        return f"{title}\n{summary}\n{eligibility}".strip()
+
+    def _load_or_build_index(self):
+        import pickle
+
+        if self._cache_path.exists():
+            logger.info(f"Loading BiomedBERT cache from {self._cache_path}")
+            with open(self._cache_path, "rb") as f:
+                cached = pickle.load(f)
+            self._trials = cached["trials"]
+            self._embeddings = cached["embeddings"]
+            logger.info(f"Loaded {len(self._trials):,} trial embeddings from cache")
+            return
+
+        logger.info(
+            f"Building BiomedBERT index from {self._corpus_path} "
+            "(one-time, ~5-10 min on first run)..."
+        )
+        docs: list[str] = []
+        trials: list[Trial] = []
+
+        with open(self._corpus_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                nct_id = record.get("nct_id") or record.get("_id", "")
+                if not nct_id:
+                    continue
+
+                title = record.get("title", "")
+                condition = record.get("condition", "")
+                if not condition:
+                    meta = record.get("metadata", {})
+                    conditions = meta.get("conditions", [])
+                    condition = (
+                        " ".join(conditions)
+                        if isinstance(conditions, list)
+                        else str(conditions)
+                    )
+                eligibility = record.get("eligibility_criteria", "") or record.get("text", "")
+
+                trials.append(Trial(
+                    nct_id=nct_id,
+                    title=title,
+                    phase=None,
+                    status="RECRUITING",
+                    conditions=[condition] if condition else [],
+                    eligibility_criteria_raw=eligibility,
+                ))
+                docs.append(self._build_doc(record))
+
+        model = self._get_model()
+        logger.info(f"Encoding {len(docs):,} documents with {self._MODEL_NAME}...")
+        embeddings = model.encode(
+            docs,
+            batch_size=64,
+            show_progress_bar=True,
+            convert_to_numpy=True,
+        )
+
+        self._trials = trials
+        self._embeddings = embeddings
+
+        logger.info(f"Saving BiomedBERT cache to {self._cache_path}...")
+        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._cache_path, "wb") as f:
+            pickle.dump({"trials": trials, "embeddings": embeddings}, f)
+        logger.info("BiomedBERT cache saved.")
+
+    # ── public API ─────────────────────────────────────────────────────────────
+
+    def retrieve(self, query: str, top_k: int = 20) -> list[Trial]:
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        model = self._get_model()
+        query_emb = model.encode([query], convert_to_numpy=True)
+        sims = cosine_similarity(query_emb, self._embeddings)[0]
+        top_indices = sims.argsort()[::-1][:top_k]
+        return [self._trials[i] for i in top_indices]
