@@ -1,12 +1,11 @@
 """
-Build a confusion matrix comparing the matcher's eligibility predictions
-against TREC physician relevance judgments for top-5 results.
+Compare LLM matcher predictions against TREC physician ground truth.
 
 Mapping:
-  TREC grade 0         → "not_relevant"  → negative class
-  TREC grade 1 or 2    → "relevant"      → positive class
-  Matcher score >= 0.5 → "eligible"      → predicted positive
-  Matcher score < 0.5  → "excluded"      → predicted negative
+  TREC grade 0         → not_relevant → negative class
+  TREC grade 1 or 2   → relevant     → positive class
+  Matcher score >= 0.5 → eligible     → predicted positive
+  Matcher score < 0.5  → excluded     → predicted negative
 
 Usage:
   cd trialmatch
@@ -27,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 DEFAULT_RUN = "results/run_r1.json"
 OUTPUT_PNG = "results/confusion_matrix.png"
+OUTPUT_ERRORS = "results/matcher_errors.jsonl"
 
 
 def _load_run(run_path: str) -> list[dict]:
@@ -36,6 +36,7 @@ def _load_run(run_path: str) -> list[dict]:
     for topic in data.get("per_topic_results", []):
         if "error" in topic:
             continue
+        patient_text = topic.get("topic_text", "")
         for trial in topic.get("top5", []):
             trec_grade = trial.get("trec_grade", -1)
             if trec_grade == -1:
@@ -43,8 +44,10 @@ def _load_run(run_path: str) -> list[dict]:
             rows.append({
                 "topic_id": topic["topic_id"],
                 "nct_id": trial["nct_id"],
+                "title": trial.get("title", ""),
                 "overall_score": trial.get("overall_score", 0.0),
                 "trec_grade": trec_grade,
+                "patient_text": patient_text[:300],
             })
     return rows
 
@@ -63,7 +66,6 @@ def compute(run_path: str = DEFAULT_RUN) -> None:
     # Binarise
     y_true = np.array([1 if r["trec_grade"] > 0 else 0 for r in rows])
     y_pred = np.array([1 if r["overall_score"] >= 0.5 else 0 for r in rows])
-    labels = ["not_relevant / excluded", "relevant / eligible"]
 
     from sklearn.metrics import (
         accuracy_score,
@@ -75,28 +77,49 @@ def compute(run_path: str = DEFAULT_RUN) -> None:
     acc = accuracy_score(y_true, y_pred)
     prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary")
 
-    # ── Print ─────────────────────────────────────────────────────────────────
-    print(f"\nConfusion Matrix  ({run_path})")
-    print(f"  {'':>30}  Predicted")
-    print(f"  {'':>30}  {'Excluded':>10}  {'Eligible':>10}")
-    print(f"  {'Actual  Not Relevant':>30}  {cm[0, 0]:>10}  {cm[0, 1]:>10}")
-    print(f"  {'Actual  Relevant':>30}  {cm[1, 0]:>10}  {cm[1, 1]:>10}")
+    tn, fp, fn, tp = cm.ravel()
+    total = int(cm.sum())
 
-    total = cm.sum()
-    print(f"\n  Pairs evaluated : {total}")
-    print(f"  Accuracy        : {acc:.3f}")
-    print(f"  Precision       : {prec:.3f}  (eligible class)")
-    print(f"  Recall          : {rec:.3f}  (eligible class)")
-    print(f"  F1              : {f1:.3f}  (eligible class)")
+    # ── Print matrix ──────────────────────────────────────────────────────────
+    print(f"\n{'='*60}")
+    print(f"{'Confusion Matrix: Matcher vs. TREC Physician Judgments':^60}")
+    print(f"{'='*60}")
+    print(f"\n{'':>35}  Predicted")
+    print(f"{'':>35}  {'Excluded':>10}  {'Eligible':>10}")
+    print(f"  {'TREC  Not Relevant':>33}  {tn:>10}  {fp:>10}")
+    print(f"  {'Grade Relevant':>33}  {fn:>10}  {tp:>10}")
+
+    print(f"\n  Pairs evaluated  : {total}")
+    print(f"  Overall Accuracy : {acc:.1%}")
+    print(f"  Precision        : {prec:.1%}  (eligible class)")
+    print(f"  Recall           : {rec:.1%}  (eligible class)")
+    print(f"  F1 Score         : {f1:.1%}  (eligible class)")
+
+    # ── Clinical interpretation ───────────────────────────────────────────────
+    print(f"\n  Clinical Interpretation:")
+    print(
+        f"  - False Positives ({fp} cases): Matcher says eligible, physician says not relevant\n"
+        f"    → Risk: Wasted patient time, screening visit for ineligible trial"
+    )
+    print(
+        f"  - False Negatives ({fn} cases): Matcher says excluded, physician says relevant\n"
+        f"    → Risk: Missed trial opportunities for the patient"
+    )
+    if acc < 0.80:
+        print(
+            f"\n  Recommended threshold: consider lowering eligibility cutoff from 0.5 to 0.4\n"
+            f"  (current accuracy {acc:.1%} is below 80% — bias toward recall to reduce FN)"
+        )
+    else:
+        print(f"\n  Accuracy {acc:.1%} meets production threshold (≥80%).")
 
     # ── Visualise ─────────────────────────────────────────────────────────────
     try:
         import matplotlib.pyplot as plt
         import seaborn as sns
 
-        fig, ax = plt.subplots(figsize=(6, 5))
+        fig, ax = plt.subplots(figsize=(8, 6))
 
-        # Counts + percentages in each cell
         annot = np.array([
             [f"{cm[i, j]}\n({cm[i, j]/total*100:.1f}%)" for j in range(2)]
             for i in range(2)
@@ -111,17 +134,17 @@ def compute(run_path: str = DEFAULT_RUN) -> None:
             yticklabels=["Not Relevant\n(TREC)", "Relevant\n(TREC)"],
             ax=ax,
             linewidths=0.5,
-            annot_kws={"size": 13},
+            annot_kws={"size": 14},
         )
 
         ax.set_title(
             f"Matcher vs TREC Physician Judgments\n"
-            f"Acc={acc:.2f}  P={prec:.2f}  R={rec:.2f}  F1={f1:.2f}",
-            fontsize=12,
-            pad=12,
+            f"Acc={acc:.1%}  P={prec:.1%}  R={rec:.1%}  F1={f1:.1%}",
+            fontsize=13,
+            pad=14,
         )
-        ax.set_ylabel("Actual label (TREC)", fontsize=11)
-        ax.set_xlabel("Predicted label (Matcher)", fontsize=11)
+        ax.set_ylabel("Actual label (TREC)", fontsize=12)
+        ax.set_xlabel("Predicted label (Matcher)", fontsize=12)
         plt.tight_layout()
 
         os.makedirs(os.path.dirname(OUTPUT_PNG) or ".", exist_ok=True)
@@ -132,6 +155,26 @@ def compute(run_path: str = DEFAULT_RUN) -> None:
     except ImportError as e:
         print(f"\n  [Warning] Could not generate heatmap: {e}")
         print("  Install with:  pip install matplotlib seaborn")
+
+    # ── Error case extraction ─────────────────────────────────────────────────
+    os.makedirs(os.path.dirname(OUTPUT_ERRORS) or ".", exist_ok=True)
+    error_count = 0
+    with open(OUTPUT_ERRORS, "w") as f:
+        for row, yt, yp in zip(rows, y_true, y_pred):
+            if yt != yp:
+                error_type = "false_positive" if yp == 1 else "false_negative"
+                f.write(json.dumps({
+                    "error_type": error_type,
+                    "topic_id": row["topic_id"],
+                    "nct_id": row["nct_id"],
+                    "matcher_score": row["overall_score"],
+                    "trec_grade": row["trec_grade"],
+                    "patient_text": row["patient_text"],
+                    "trial_title": row["title"],
+                }) + "\n")
+                error_count += 1
+
+    print(f"  Error cases ({error_count} FP+FN) saved → {OUTPUT_ERRORS}")
 
 
 if __name__ == "__main__":
