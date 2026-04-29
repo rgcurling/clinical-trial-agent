@@ -44,31 +44,57 @@ CONFIGS = [
         "retriever_type": "tfidf",
         "use_critic": False,
         "output_file": "results/run_baseline.json",
+        "checkpoint": "results/ckpt_baseline.json",
     },
     {
         "name": "R1 (BiomedBERT)",
         "retriever_type": "biomedbert",
         "use_critic": False,
         "output_file": "results/run_r1.json",
+        "checkpoint": "results/ckpt_r1.json",
     },
     {
         "name": "R2 (Critic)",
         "retriever_type": "tfidf",
         "use_critic": True,
         "output_file": "results/run_r2.json",
+        "checkpoint": "results/ckpt_r2.json",
     },
     {
         "name": "R3 (Combined)",
         "retriever_type": "biomedbert",
         "use_critic": True,
         "output_file": "results/run_r3.json",
+        "checkpoint": "results/ckpt_r3.json",
     },
 ]
 
 
-def run_all(topic_range: tuple[int, int] = TOPIC_RANGE) -> None:
+def _is_complete(output_file: str, required_topics: int) -> bool:
+    """Return True if the output file already has all required topics with correct config."""
+    path = Path(output_file)
+    if not path.exists():
+        return False
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        valid = [r for r in data.get("per_topic_results", []) if "error" not in r]
+        return len(valid) >= required_topics
+    except Exception:
+        return False
+
+
+def run_all(topic_range: tuple[int, int] = TOPIC_RANGE, *, fresh: bool = False) -> None:
     RESULTS_DIR.mkdir(exist_ok=True)
     summary: list[dict] = []
+    n_required = topic_range[1] - topic_range[0] + 1
+
+    if fresh:
+        for cfg in CONFIGS:
+            for f in [cfg["output_file"], cfg["checkpoint"]]:
+                if Path(f).exists():
+                    Path(f).unlink()
+                    print(f"  [fresh] deleted {f}")
 
     print(f"\n{'='*70}")
     print(f"  TrialMatch AI — M3 Experiments  |  Topics {topic_range[0]}–{topic_range[1]}")
@@ -80,6 +106,23 @@ def run_all(topic_range: tuple[int, int] = TOPIC_RANGE) -> None:
         print(f"  Output: {cfg['output_file']}")
         print(f"  {'-'*60}")
 
+        # Skip if already complete and not forcing fresh
+        if not fresh and _is_complete(cfg["output_file"], n_required):
+            print(f"  SKIPPED (already has {n_required} topics) — delete with --fresh to rerun")
+            with open(cfg["output_file"]) as f:
+                cached = json.load(f)
+            summary.append({
+                "name": cfg["name"],
+                "output_file": cfg["output_file"],
+                "p_at_5": cached["metrics"]["p_at_5"],
+                "ndcg_at_5": cached["metrics"]["ndcg_at_5"],
+                "runtime_seconds": cached.get("runtime_seconds", 0),
+                "total_api_calls": cached.get("total_api_calls", 0),
+                "estimated_cost_usd": cached.get("estimated_cost_usd", 0),
+                "status": "ok",
+            })
+            continue
+
         wall_start = time.perf_counter()
         try:
             results = run_trec_benchmark(
@@ -88,6 +131,7 @@ def run_all(topic_range: tuple[int, int] = TOPIC_RANGE) -> None:
                 topic_range=topic_range,
                 output_file=cfg["output_file"],
                 generate_explanations=True,
+                resume_from=cfg["checkpoint"] if not fresh else None,
             )
             wall_elapsed = time.perf_counter() - wall_start
 
@@ -158,6 +202,12 @@ if __name__ == "__main__":
 
     p = argparse.ArgumentParser(description="Run all 4 M3 experimental configurations")
     p.add_argument(
+        "--fresh",
+        action="store_true",
+        default=False,
+        help="Delete existing run files and start all configs from scratch",
+    )
+    p.add_argument(
         "--topic-range",
         nargs=2,
         type=int,
@@ -166,4 +216,4 @@ if __name__ == "__main__":
         help="Topic ID range (default: 26 40)",
     )
     args = p.parse_args()
-    run_all(topic_range=tuple(args.topic_range))
+    run_all(topic_range=tuple(args.topic_range), fresh=args.fresh)

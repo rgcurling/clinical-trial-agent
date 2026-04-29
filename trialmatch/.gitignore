@@ -1,10 +1,29 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 .env
 .env.local
+
+# API response cache (small per-query JSON blobs, not needed in repo)
 data/cached_trials/
-results/
+
+# Intermediate / dev artifacts — excluded from repo
+results/pilot_*.json
+results/smoke_*.json
+results/ckpt_*.json
+results/checkpoint_*.json
+
+# Keep in repo (committed after final runs):
+#   results/run_*.json
+#   results/comparison_table.csv
+#   results/confusion_matrix.png
+#   results/explanation_metrics.csv
+#   results/audit_sheet.txt
+#   results/matcher_errors.jsonl
+#   results/critic_disagreements.jsonl
+
+# Test cache
 .pytest_cache/
 *.egg-info/
 dist/

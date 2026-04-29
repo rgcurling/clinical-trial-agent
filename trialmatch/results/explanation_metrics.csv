@@ -1,0 +1,989 @@
+topic_id,nct_id,explanation_length_chars,explanation_text,fk_grade,bertscore_f1,pass_fk,pass_bertscore,combined_pass
+26,NCT01190280,647,"**TRIAL NAME:** Study on When Gallbladder Surgery is Needed for Gallstones
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have pain in your upper right belly. The pain lasts more than 30 minutes.
+- A scan showed you have gallstones in your gallbladder.
+- You have bad belly pain. The pain has lasted more than 8-12 hours.
+- Your doctor found it hurts when they press on your upper right belly.
+- Tests show your gallbladder is swollen. You may have had a fever.
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- You seem to meet all the study needs. No other information is needed.
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01190280",4.73088235294118,0.8145,True,False,False
+26,NCT03074084,339,"**TRIAL NAME:** Study of Adults with Bad Stomach Pain in Emergency Rooms
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are an adult with stomach pain
+
+**THINGS TO TALK ABOUT WITH YOUR DOCTOR:**
+- (No other information needed - you seem to meet the main requirement)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03074084",12.906914893617024,0.8089,False,False,False
+26,NCT01699906,354,"**TRIAL NAME:** Weight Loss Diet Study for Women with Obesity
+
+**MATCH SCORE:** 6.7/10
+
+**WHY YOU MAY QUALIFY:**
+- You are between 40 and 70 years old
+- You went through menopause and your periods stopped on their own
+
+**THINGS TO ASK YOUR DOCTOR:**
+- What is my BMI? Is it between 35 and 50?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01699906",7.156481481481482,0.7784,True,False,False
+26,NCT02852408,354,"**TRIAL NAME:** Study of Pain After Gallbladder Removal Surgery
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You likely have a gallbladder problem that is not cancer. It needs treatment.
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Am I healthy enough for surgery? What do my medical tests show?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02852408",7.582755102040817,0.8024,True,False,False
+26,NCT01706068,547,"**TRIAL NAME:** Heart Changes in People with Gallbladder Problems
+
+**MATCH SCORE:** 3.3/10
+
+*Note: This low score means this trial may not be right for you.*
+
+**WHY YOU MAY QUALIFY:**
+- You are between 18 and 75 years old
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have serious gallbladder problems? (Like acute cholecystitis, biliary colic, or acute cholangitis? These are problems that make people go to the emergency room)
+- Can I join this study? Am I willing to sign the consent form?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01706068",6.94753872633391,0.7936,True,False,False
+27,NCT03882307,814,"**TRIAL NAME:** Study of Blood Protein Levels in Hepatitis C Patients
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are between 18 and 70 years old
+- You have hepatitis C virus in your blood
+- Your weight and height don't matter for this study
+- It doesn't matter if you had hepatitis C treatment before
+- Any level of liver scarring is okay
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Is my bilirubin level above 2 mg/dl? (This shows how well my liver cleans waste)
+- Is my albumin level below 2.8 g/dl? (This shows a protein my liver makes)
+- Is my INR 1.7 or higher? (This shows how fast my blood clots)
+- Is my platelet count below 50,000? (Platelets help your blood clot)
+- Is my creatinine above 2.5 mg/dl? (This shows how well my kidneys work)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03882307",7.938022388059704,0.8227,True,False,False
+27,NCT04244383,305,"**TRIAL NAME:** Study of How Your Body Fights Hepatitis C
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have long-term hepatitis C
+
+**THINGS TO TALK ABOUT WITH YOUR DOCTOR:**
+- (No extra information needed from your medical records)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04244383",13.450000000000003,0.7901,False,False,False
+27,NCT03226717,582,"**TRIAL NAME:** Study of Hepatitis C Treatments and Joint Pain
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- We did not find clear matches with your info
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have hepatitis C? Was this shown by a PCR blood test?
+- Do I have joint pain or arthritis because of my hepatitis C?
+- Am I taking hepatitis C drugs now? Or will I start taking them soon?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03226717
+
+*Note: This trial may not be a good fit based on your match score. Your doctor can help you decide if this study is right for you.*",5.145333333333333,0.7685,True,False,False
+27,NCT03612973,532,"**TRIAL NAME:** Study of Liver Changes in Hepatitis C Patients Getting Treatment
+
+**MATCH SCORE:** 2.5/10
+
+*Note: This trial may not be the best fit for you based on what we know.*
+
+**WHY YOU MAY QUALIFY:**
+- You are over 18 years old
+- You have had hepatitis C for 6 months or longer
+- You have never had liver cancer
+- Your liver disease is only caused by hepatitis C
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Have I been tested for hepatitis B and HIV? What were the results?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03612973",8.828183908045975,0.7843,False,False,False
+27,NCT02393365,400,"TRIAL NAME: Study of Hepatitis C Testing in Belgium
+
+MATCH SCORE: 0.0/10
+
+WHY YOU MAY QUALIFY:
+- No criteria match your situation
+
+THINGS TO ASK YOUR DOCTOR:
+- Am I having same-day surgery on my stomach or digestive system?
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT02393365
+
+**Note: This match score is very low. This trial may not be right for you. Talk to your doctor about other options.**",7.852903225806454,0.772,True,False,False
+28,NCT00411372,472,"**TRIAL NAME:** Study to Test a Survey About Breathing Problems
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have COPD (chronic obstructive pulmonary disease)
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have recent chest X-ray or CT scan results?
+- Do I have any serious heart problems?
+- Have I ever had lung surgery?
+- Do I have other breathing problems besides COPD?
+- Do I have a history of cancer?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00411372",7.190000000000001,0.8042,True,False,False
+28,NCT01114386,423,"**TRIAL NAME:** Study of People with Lung Disease and Heart Failure
+
+**MATCH SCORE:** 8.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are male or female (all genders welcome)
+- You are over 50 years old
+- You smoked for many years
+- You have lung disease (COPD) or heart failure
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Can I join this study? Does my race or background matter?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01114386",7.612500000000001,0.7986,True,False,False
+28,NCT03680495,763,"**TRIAL NAME:** Study of Steroid Treatment for Severe COPD Flare-Ups
+
+**MATCH SCORE:** 2.5/10
+
+**WHY YOU MAY QUALIFY:**
+- You have been diagnosed with COPD by a doctor
+- You are 40 years old or older
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- Am I currently having a severe COPD flare-up that brought me to the emergency room or ICU?
+- Do I need help breathing from a machine (ventilator) right now?
+- Does my age fit what this study is looking for compared to other patients?
+- Does my lung function test results match what this study needs?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03680495
+
+*Note: This trial may not be the best fit for you based on your low match score. Your doctor can help you explore other options that might be more suitable.*",7.3069500000000005,0.796,True,False,False
+29,NCT00591227,476,"TRIAL NAME: Testing Better Ways to Treat Diabetes in Emergency Rooms
+
+MATCH SCORE: 4.0/10
+
+WHY YOU MAY QUALIFY:
+- You are 18 to 80 years old
+- You have treated your diabetes before with diet, pills, or insulin
+- You are not pregnant and cannot get pregnant
+
+THINGS TO ASK YOUR DOCTOR:
+- Was my blood sugar over 200 when I came to the emergency room?
+
+NOTE: This trial may not be right for you. Your match score is low.
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT00591227",8.197316455696207,0.8058,False,False,False
+29,NCT00554281,503,"**TRIAL NAME:** Using Glucose Sensors to Prevent Low Blood Sugar
+
+**MATCH SCORE:** 2.5/10
+
+*Note: This low score means this trial may not be right for you.*
+
+**WHY YOU MAY QUALIFY:**
+- You have Type 1 diabetes proven by a blood test
+- You are 18 to 70 years old
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have a high enough score on a test for severe low blood sugar?
+- Are my blood tests normal for thyroid, stress hormones, and celiac disease?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00554281",7.21087804878049,0.8011,True,False,False
+29,NCT04694053,509,"**TRIAL NAME:** Study of Severe Skin Infection in Diabetes Patients
+
+**MATCH SCORE:** 0.0/10
+
+**WHY YOU MAY QUALIFY:**
+- We found no matching reasons based on your info
+
+**THINGS TO ASK YOUR DOCTOR:**
+- No specific questions to ask right now
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04694053
+
+---
+*Note: This trial scored below 4 out of 10. It may not be right for you. Your doctor can help you find better clinical trials. They can find ones that match your health condition and medical history.*",7.482564102564105,0.7934,True,False,False
+29,NCT02408120,446,"**TRIAL NAME:** Study of Insulin Treatment for High Blood Sugar in Type 2 Diabetes
+
+**MATCH SCORE:** 0.0/10
+
+*Note: This trial may not be right for you based on what we know.*
+
+**WHY YOU MAY QUALIFY:**
+- You are in the hospital now for a health problem or surgery
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Are my blood sugar levels between 140 and 400? Do I have safe acid levels in my blood?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02408120",7.238246575342465,0.7971,True,False,False
+29,NCT01099618,661,"**TRIAL NAME:** Study Comparing Two Diabetes Medications for Ketosis-Prone Diabetes
+
+**MATCH SCORE:** 0.0/10
+
+**WHY YOU MAY QUALIFY:**
+- (No criteria were found that you clearly meet)
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Is my BMI 28 or higher? (BMI measures body weight)
+- What is my current blood sugar level?
+- Does my race or background affect if I can join this study?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01099618
+
+---
+*Note: This trial may not be right for you based on what we know now. Your doctor can help figure out if you have the right type of diabetes for this study. They can also see if missing information might make you eligible.*",7.734464285714285,0.7853,True,False,False
+31,NCT00266266,322,"**TRIAL NAME:** HPV DNA Self-Test Study
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You had an abnormal Pap test result
+- You are between 18 years old and past menopause
+
+**THINGS TO TALK ABOUT WITH YOUR DOCTOR:**
+- (No additional information needed)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00266266",13.37639534883721,0.8056,False,False,False
+31,NCT00339989,451,"**TRIAL NAME:** Study of Early Cervical Cancer Signs and Causes
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are a woman who needs a colposcopy (a close look at your cervix)
+- You have early stage cervical cancer
+- You are 18 years old or older
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Is your referral to the University of Oklahoma?
+- Do you have HIV/AIDS? This study needs to know.
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00339989",8.090550724637684,0.7946,False,False,False
+31,NCT00579787,650,"**TRIAL NAME:** Study of Life Quality After Different Cervical Cancer Surgeries
+
+**MATCH SCORE:** 6.7/10
+
+**WHY YOU MAY QUALIFY:**
+- You have cervical cancer that has spread to nearby tissue
+- Your cancer is in the early stages that this study looks at
+- You are between 18 and 45 years old
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Am I healthy enough for surgery? Have I signed the consent forms?
+- Have I agreed to have my cervix removed or all my reproductive organs removed?
+- Can I read and speak English well enough to fill out surveys?
+- Do I understand this study? Can I give my consent?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00579787",7.520384615384614,0.8025,True,False,False
+31,NCT01658930,1050,"**TRIAL NAME:** Comparing Two Types of Hysterectomy for Early Cervical Cancer
+
+**MATCH SCORE:** 6.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are 18 years old or older
+- You do not want to have children in the future
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have cervical cancer that is confirmed? Is it one of these types: adenocarcinoma, squamous, or adenosquamous?
+- Is my cervical cancer low-risk and early-stage? Is it FIGO Stage IA2 or IB1?
+- Have I had all the physical exams I need? This includes a recto-vaginal exam and cervix check.
+- Have I had the imaging tests I need? This includes chest x-ray or CT scan and pelvic MRI.
+- Am I healthy enough for surgery?
+- Am I willing to fill out forms about my quality of life for the study?
+- Am I willing to take part in the cost study portion?
+- Can I give proper consent to join this research?
+- Will I be able to come to all treatment visits and follow-up appointments?
+- Can my surgery happen within 20 weeks of when I was first diagnosed?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01658930",6.057708333333334,0.7942,True,False,False
+31,NCT00804466,411,"TRIAL NAME: HPV Study in Nigerian Women
+MATCH SCORE: 5.0/10
+
+WHY YOU MAY QUALIFY:
+  - You are a woman. You are between 15 and 99 years old.
+
+THINGS TO ASK YOUR DOCTOR:
+  - (No extra questions needed based on the details given)
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT00804466
+
+**Note: This match score means this trial may not be right for you. You may want to look at other choices with your doctor.**",5.848582089552242,0.7923,True,False,False
+32,NCT03776851,634,"**TRIAL NAME:** Testing Erythropoietin Medicine for Hemolytic Uremic Syndrome
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have hemolytic uremic syndrome (HUS). It started after you had diarrhea.
+- Your illness began with stomach problems. Then you got blood and kidney problems.
+- Your red blood cells are damaged. Your platelet count is low. Your kidneys have problems.
+- Blood tests show high creatinine levels. You have protein or blood in your urine.
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- (No additional information needed from your medical records)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03776851",7.9750052246604,0.8072,True,False,False
+32,NCT03690024,386,"**TRIAL NAME:** Study of Children with Hemolytic Uremic Syndrome at Assiut Hospital
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are under 18 years old and have been told you have Hemolytic Uremic Syndrome
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- (No additional information needed to confirm your eligibility)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03690024",16.798137254901963,0.7955,False,False,False
+32,NCT02205541,615,"**TRIAL NAME:** Testing Eculizumab Medicine for Children with Kidney Disease from E. Coli
+
+**MATCH SCORE:** 8.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are a child between 1 month and 18 years old
+- Your platelet count is low (less than 150,000)
+- You have anemia. This means your red blood cells are damaged and your hemoglobin is low.
+- You had diarrhea before getting sick. Or you tested positive for bad E. coli bacteria.
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have kidney problems for this study?
+- Can my parents give written permission for me to join?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02205541",6.515833333333333,0.7893,True,False,False
+32,NCT02336516,554,"**TRIAL NAME:** Testing Azithromycin for Blood and Kidney Problems After Diarrhea
+
+**MATCH SCORE:** 7.5/10
+
+**WHY YOU MAY QUALIFY:**
+- You are between 6 months and 18 years old
+- Your kidneys are not working well. A blood test shows high levels of creatinine.
+- You have low red blood cells. The blood cells look damaged under a microscope.
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do we live in France? Or can we travel there for this study?
+- What papers do my parents need to sign for me to join?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02336516",4.8506060606060615,0.7733,True,False,False
+32,NCT01406288,582,"TRIAL NAME: Study of Kidney Disease from E. coli Food Poisoning Outbreak
+
+MATCH SCORE: 0.0/10
+
+WHY YOU MAY QUALIFY:
+  - No clear matches found based on available information
+
+THINGS TO CLARIFY WITH YOUR DOCTOR:
+  - Do I have kidney problems caused by E. coli O104:H4 food poisoning from this specific outbreak?
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT01406288
+
+**Note: With a match score this low, this trial may not be the best fit for you. This study looked at a specific food poisoning outbreak that happened in the past, so it may no longer be accepting new patients.**",7.748757763975156,0.802,True,False,False
+33,NCT01730144,607,"**TRIAL NAME:** Study of How Your Body Fights a Live Flu Vaccine
+
+**MATCH SCORE:** 6.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are an adult between 18 and 49 years old
+- If you can get pregnant, you must use birth control during the study
+- You are in good health. You do not have major health problems.
+
+**THINGS TO TALK ABOUT WITH YOUR DOCTOR:**
+- Are you willing to let researchers keep your blood and other samples? They may use them for future studies.
+- Can you come to all required follow-up visits? You will need to come throughout the study.
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01730144",5.803926767676767,0.8063,True,False,False
+33,NCT00963157,554,"**TRIAL NAME:** H1N1 Flu Vaccine Study Testing Different Doses in Adults
+
+**MATCH SCORE:** 6.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are 18 years or older
+- You are male or a woman who is not pregnant
+- Women who can get pregnant must use birth control during the study
+- You are healthy based on your medical history and exam
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Are my liver tests normal?
+- Can I understand and follow all the study rules?
+- Can I give written consent to join this medical study?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00963157",9.24218181818182,0.7937,False,False,False
+33,NCT01440205,389,"TRIAL NAME: Flu Shot Study
+
+MATCH SCORE: 5.0/10
+
+WHY YOU MAY QUALIFY:
+- We could not find clear reasons why you qualify from the information we have
+
+THINGS TO ASK YOUR DOCTOR:
+- Do I work at one of the companies working with this study?
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT01440205
+
+*Note: This trial may not be a good fit for you based on what we know and your match score.*",7.293484848484848,0.7999,True,False,False
+33,NCT01206686,274,"TRIAL NAME: How Appointment Scheduling Affects Flu Shot Rates
+
+MATCH SCORE: 5.0/10
+
+WHY YOU MAY QUALIFY:
+- The CDC says you should get a flu shot
+
+THINGS TO ASK YOUR DOCTOR:
+- Do you work for a company in this study?
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT01206686",8.412857142857145,0.8132,False,False,False
+33,NCT01971255,663,"**TRIAL NAME:** Study of Flu Antibodies for Protection in Healthy Adults
+
+**MATCH SCORE:** 4.3/10
+
+**WHY YOU MAY QUALIFY:**
+- You are between 18 and 50 years old
+- You agree not to use tobacco during the study
+- You can use two types of birth control at once
+- You do not have HIV infection
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Will I need to stay alone for at least 9 days during the study?
+- Am I okay with storing my blood samples for future research?
+- Do my current flu antibody levels fit what the study needs?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01971255
+
+*Note: This match score is below average. This trial may not be the best fit for you.*",7.612500000000001,0.8033,True,False,False
+34,NCT01699906,487,"**TRIAL NAME:** Weight Loss Diet Study for Women with Obesity
+
+**MATCH SCORE:** 3.3/10
+
+**WHY YOU MAY QUALIFY:**
+- You are between 40 and 70 years old
+- You went through menopause and your periods stopped naturally
+
+**THINGS TO ASK YOUR DOCTOR:**
+- What is my current BMI? Is it between 35-50?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01699906
+
+*Note: This trial may not be right for you. Your match score is low. Your doctor can help you find better clinical trial options.*",6.209904761904763,0.7798,True,False,False
+34,NCT03303157,413,"TRIAL NAME: REM Sleep and Dreaming Study
+
+MATCH SCORE: 0.0/10
+
+WHY YOU MAY QUALIFY:
+  - You do not seem to meet what this study needs
+
+THINGS TO TALK ABOUT WITH YOUR DOCTOR:
+  - Nothing needed right now
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT03303157
+
+**Please note: Your match score is very low. This trial may not be right for you. You may want to look for other clinical trials that fit you better.**",6.191223880597015,0.811,True,False,False
+34,NCT01748734,426,"**TRIAL NAME:** Therapy to Help Cancer Patients With Depression
+
+**MATCH SCORE:** 0.0/10
+
+*Note: This trial may not be right for you based on what we know.*
+
+**WHY YOU MAY QUALIFY:**
+- A doctor said you have major depression
+- You can understand and agree to join the study
+
+**THINGS TO ASK YOUR DOCTOR:**
+- (No extra information needed from your doctor right now)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01748734",10.95555555555556,0.7836,False,False,False
+34,NCT01671397,474,"**TRIAL NAME:** Weight Loss Counseling Study for Women
+
+**MATCH SCORE:** 0.0/10
+
+*Note: This trial may not be right for you based on what we know.*
+
+**WHY YOU MAY QUALIFY:**
+- You are a woman age 18 to 70 who wants help with weight loss
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Can I go to 6 visits during the study?
+- Can I have 2 blood draws during the study?
+- Can I fill out 3 sleep diaries that last one week each?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01671397",5.408333333333335,0.8068,True,False,False
+34,NCT00000854,445,"**TRIAL NAME:** Study of Nandrolone Medicine for Women with HIV Weight Loss
+
+**MATCH SCORE:** 0.0/10
+
+*Note: This trial may not be right for you based on your info.*
+
+**WHY YOU MAY QUALIFY:**
+- You lost weight in the past 12 months
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Can I eat enough food to keep my weight the same?
+- Do I need to use birth control or not have sex during this study?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00000854",5.945095890410961,0.8054,True,False,False
+35,NCT04356079,290,"**TRIAL NAME:** Study of Family and Environmental Causes of Migraine
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have migraine headaches
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- (No additional information needed)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04356079",14.64,0.7823,False,False,False
+35,NCT00930852,376,"**TRIAL NAME:** Study of Migraine and Eating Habits in Children
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are a child or teen between 5 and 16 years old
+- A doctor has told you that you have migraines
+
+**THINGS TO TALK ABOUT WITH YOUR DOCTOR:**
+- (No extra information needed based on your profile)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00930852",13.240714285714287,0.819,False,False,False
+35,NCT03626805,542,"**TRIAL NAME:** Study of Muscle Problems in People with Migraines
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have migraines that doctors have diagnosed
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Can I join studies at the Danish Headache Centre?
+- Can I avoid migraines, upper body workouts, and pain pills for 48 hours before my visit?
+- Can I be migraine-free for at least 2 days before I take part?
+- Is it safe for me to stop taking pain pills for 2 days before the exam?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03626805",7.425581395348839,0.8165,True,False,False
+35,NCT03632928,507,"**TRIAL NAME:** Study of Daily Changes in Pain Sensitivity and Muscle Tension
+
+**MATCH SCORE:** 0.0/10
+
+**WHY YOU MAY QUALIFY:**
+- No clear matches found based on available information
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have migraines? Do they meet the official rules for migraine diagnosis?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03632928
+
+*Note: This trial may not be a good fit for you based on your current information. Talk to your healthcare team about other clinical trial options.*",8.833513513513513,0.7997,False,False,False
+36,NCT03593798,354,"**TRIAL NAME:** Study of Lifestyle Changes and Fitness in People with Severe Obesity
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have severe obesity that hurts your health and daily life
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Can I get care at Vestfold Hospital Trust for this study?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03593798",10.262,0.7906,False,False,False
+36,NCT03346421,414,"**TRIAL NAME:** Study of Body Size, Health Markers and Breathing in Obese Patients
+
+**MATCH SCORE:** 7.5/10
+
+**WHY YOU MAY QUALIFY:**
+- You are over 18 years old
+- Your BMI is above 30. This means you have obesity.
+- You want to join this research study
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have high body fat? Can you measure it with a special scan?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03346421",5.881153846153847,0.7767,True,False,False
+36,NCT00074633,662,"**TRIAL NAME:** Health at Every Size Alternative Weight Treatment Study
+
+**MATCH SCORE:** 7.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are a woman between 30-45 years old
+- Your BMI is over 30
+- You don't smoke
+- You are not pregnant or breastfeeding
+- You haven't had a heart attack recently
+- You don't have active cancer, Type 1 diabetes, Type 2 diabetes that needs insulin, stroke history, or kidney disease
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Am I white? This study requires white participants.
+- Do I have a history of going on many diets? This study looks for people who have tried dieting many times.
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00074633",9.89686274509804,0.8136,False,False,False
+36,NCT00297154,539,"**TRIAL NAME:** Diet and Exercise Study for Heart Failure
+
+**MATCH SCORE:** 6.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are 18 to 75 years old
+- You weigh more than you should for your height
+- You have high blood fats called triglycerides
+- You have low levels of good cholesterol called HDL
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I need to measure around my waist for this study?
+- Have I had a heart test in the past 6 months? This test would show if exercise is safe for my heart.
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00297154",7.26211235955056,0.795,True,False,False
+36,NCT00029861,386,"**TRIAL NAME:** Weight Loss Study for People with Obesity
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- Your BMI is 30 or higher, or your BMI is over 27 and you have high blood pressure or high cholesterol
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Has my weight stayed about the same (within 11 pounds) for the past 3 months?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00029861",9.32,0.8112,False,False,False
+37,NCT00919217,373,"**TRIAL NAME:** Study on When Multiple Sclerosis Symptoms Happen
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are female
+- You have relapsing-remitting multiple sclerosis
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Have I taken steroid drugs in the last 30 days?
+- Am I taking any test medications right now?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00919217",9.817,0.8071,False,False,False
+37,NCT02504840,372,"**TRIAL NAME:** Study Following MS Patients Over Time
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have multiple sclerosis or early MS signs
+- You are 18 years old or older
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Can I do the study visits and tests?
+- Do the study doctors want me to join this research?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02504840",7.991428571428575,0.7904,True,False,False
+37,NCT04157283,398,"**TRIAL NAME:** Sexual Problems in Women with Relapsing-Remitting Multiple Sclerosis
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have multiple sclerosis (MS). A doctor diagnosed it using standard tests.
+- You are female
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- (No additional information needed from your medical records)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04157283",12.546683673469389,0.8052,False,False,False
+37,NCT04604041,518,"**TRIAL NAME:** Study of Blood Markers in Multiple Sclerosis Patients
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have relapsing-remitting multiple sclerosis
+
+**THINGS TO ASK YOUR DOCTOR:**
+- What is my EDSS score? Is it between 0 and 3.5?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04604041
+
+---
+*Note: EDSS stands for Expanded Disability Status Scale. Doctors use this tool to measure how much MS affects your daily life. A score of 0 means no disability. Higher numbers mean more disability.*",7.949932432432437,0.8057,True,False,False
+37,NCT02117375,616,"**TRIAL NAME:** Study of Early Spinal Cord Damage in Multiple Sclerosis
+
+**MATCH SCORE:** 4.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have relapsing remitting multiple sclerosis (the most common type)
+- You are between 18 and 40 years old
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have more than 9 brain spots or spinal cord spots on my MRI scans?
+- What is my disability score? Is it low enough for this study?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02117375
+
+---
+*Note: This trial may not be the best fit for you based on your match score. Your doctor can help you find other options that might work better.*",6.973428571428574,0.8046,True,False,False
+38,NCT03979521,301,"TRIAL NAME: Study on How Myasthenia Gravis Affects Daily Life
+
+MATCH SCORE: 10.0/10
+
+WHY YOU MAY QUALIFY:
+- You have myasthenia gravis
+- You are 18 or older
+
+THINGS TO ASK YOUR DOCTOR:
+- (No other information needed based on the match results)
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT03979521",12.278720930232563,0.8115,False,False,False
+38,NCT04674605,313,"**TRIAL NAME:** Study Following People with Myasthenia Gravis Over Time
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have myasthenia gravis
+
+**THINGS TO CHECK WITH YOUR DOCTOR:**
+- (No extra information needed - you meet all requirements)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04674605",12.935789473684213,0.7978,False,False,False
+38,NCT03510546,388,"**TRIAL NAME:** Study of Mestinon Medicine for Myasthenia Gravis Muscle Strength
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- Blood tests or nerve tests showed you have myasthenia gravis
+
+**THINGS TO ASK YOUR DOCTOR:**
+- When did I first get diagnosed with myasthenia gravis?
+- How long have I been getting treatment?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03510546",7.8607692307692325,0.7955,True,False,False
+38,NCT01047761,422,"**TRIAL NAME:** Exercise Study for People with Myasthenia Gravis
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have stable myasthenia gravis that affects your whole body
+- You are an adult between ages 18-70
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I exercise regularly each week?
+- Have my myasthenia gravis symptoms gotten worse in the past 3 months?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT01047761",9.362500000000004,0.8041,False,False,False
+38,NCT03059888,574,"**TRIAL NAME:** Testing Orencia Medicine for Myasthenia Gravis Patients
+
+**MATCH SCORE:** 8.3/10
+
+**WHY YOU MAY QUALIFY:**
+- You are between 16 and 85 years old
+- You have myasthenia gravis
+- Your usual treatments don't work well enough
+- Your recent blood tests are normal or close to normal
+- If you can get pregnant, you are not breastfeeding and can use birth control
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Am I willing to understand and sign the forms for this study?
+- Can I visit the study site every 2 months?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03059888",10.555909090909093,0.8039,False,False,False
+39,NCT00692224,514,"**TRIAL NAME:** Testing Zinc to Treat Jaundice in Newborn Babies
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- Your baby was born at 35 weeks or later
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- (No additional information needed)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00692224
+
+---
+
+*Note: This study tests if zinc can help reduce jaundice in newborns. Jaundice makes the skin look yellow. It happens when too much bilirubin builds up in the blood. Some newborns have a higher risk for this.*",7.205263157894738,0.8031,True,False,False
+39,NCT03684499,505,"**TRIAL NAME:** Study of Fluids for Newborn Jaundice Treatment
+
+**MATCH SCORE:** 7.5/10
+
+**WHY YOU MAY QUALIFY:**
+- Your baby weighs enough for the study. The baby needs to weigh at least 5.5 pounds.
+- Your baby's jaundice level is right for this study.
+- Your baby has the common type of jaundice. This study looks at this type.
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Is my baby ""full-term"" for this study? My baby was born at 38 weeks and 3 days.
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03684499",4.839166666666667,0.7856,True,False,False
+39,NCT04215601,420,"**TRIAL NAME:** Light Therapy Effects on Calcium Levels in Newborns
+
+**MATCH SCORE:** 6.7/10
+
+**WHY YOU MAY QUALIFY:**
+- Your baby has jaundice. Your baby needs light therapy.
+- Your baby drinks formula or breast milk.
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Does my baby fit all the rules for this jaundice study?
+- Is my baby's feeding time right for this trial?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04215601",6.379063231850118,0.8173,True,False,False
+39,NCT02807246,305,"**TRIAL NAME:** Study of Probiotics for Newborn Jaundice
+
+**MATCH SCORE:** 6.7/10
+
+**WHY YOU MAY QUALIFY:**
+- Your baby was born full-term
+- Your baby only drinks breast milk
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Was my baby's birth weight normal?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02807246",8.785,0.7943,False,False,False
+39,NCT02613676,502,"**TRIAL NAME:** Testing a Skin Scanner for Newborn Jaundice Risk
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- Your baby was born at 35 weeks or later
+- Your baby weighs at least 4 pounds (1800 grams)
+
+**THINGS TO ASK YOUR DOCTOR:**
+- (No other information needed from your medical records)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT02613676
+
+---
+*Note: This trial may not be the best fit based on your match score. Your doctor can help you find other options that might work better.*",8.92788961038961,0.7914,False,False,False
+40,NCT00480662,406,"**TRIAL NAME:** Testing a New Medicine (MK0217) for Paget's Bone Disease
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are between 18 and 90 years old with Paget's bone disease
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Can I stand or sit up straight for 30 minutes without problems?
+- Do I have trouble swallowing pills or stomach problems?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00480662",7.5625000000000036,0.8508,True,True,True
+40,NCT00453128,448,"TRIAL NAME: Study on Testing for Other Health Problems in Crystal Joint Disease
+
+MATCH SCORE: 0.0/10
+
+WHY YOU MAY QUALIFY:
+- We found no matching criteria based on your information
+
+THINGS TO TALK ABOUT WITH YOUR DOCTOR:
+- No unclear criteria to discuss
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT00453128
+
+**Note: This trial may not be right for you since your match score is very low. Your doctor can help you find better clinical trials.**",9.778079710144926,0.7934,False,False,False
+40,NCT00306046,403,"**TRIAL NAME:** PET Scan Study for Paget's Disease of Bone
+
+**MATCH SCORE:** 0.0/10
+
+*Note: This trial may not be right for you based on what we know.*
+
+**WHY YOU MAY QUALIFY:**
+- You have bone pain from your Paget's disease
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do my X-rays and bone scans show that my Paget's disease is in only one bone area?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00306046",6.506250000000001,0.8015,True,False,False
+40,NCT00615628,390,"**TRIAL NAME:** Study of How Bone Cancer Runs in Families
+
+**MATCH SCORE:** 0.0/10
+
+*Note: This trial may not be right for you based on what we know.*
+
+**WHY YOU MAY QUALIFY:**
+- You are over 18 years old
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Is someone in your family related to you by blood who has bone cancer or Paget's disease?
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT00615628",7.393709677419356,0.8065,True,False,False
+40,NCT04184661,479,"TRIAL NAME: Study of Two Bone Treatments on Bone Cells
+
+MATCH SCORE: 0.0/10
+
+WHY YOU MAY QUALIFY:
+- No matching criteria were found based on your information
+
+THINGS TO CLARIFY WITH YOUR DOCTOR:
+- Have you been told about this study and would you be willing to take part?
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT04184661
+
+**Note: This trial may not be the best fit for you based on the very low match score. Your doctor can help you find more suitable clinical trials.**",7.740153846153845,0.77,True,False,False
