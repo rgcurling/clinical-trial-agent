@@ -165,6 +165,7 @@ class ToolExecutor:
         self._trial_by_id: dict[str, Trial] = {}
         self._assessments: dict[str, object] = {}   # nct_id → MatchResult
         self._matcher = ClaudeMatcher()
+        self._bert_model = None   # loaded once on first rank call
 
     def execute(self, tool_name: str, tool_input: dict) -> str:
         """Dispatch tool call and return a JSON string result."""
@@ -240,7 +241,10 @@ class ToolExecutor:
             from sentence_transformers import SentenceTransformer
             import numpy as np
 
-            model = SentenceTransformer("NeuML/pubmedbert-base-embeddings")
+            if self._bert_model is None:
+                logger.info("Loading BiomedBERT model (one-time per session)...")
+                self._bert_model = SentenceTransformer("NeuML/pubmedbert-base-embeddings")
+            model = self._bert_model
             query_emb = model.encode(patient_text, convert_to_numpy=True)
             query_emb = query_emb / max(float(np.linalg.norm(query_emb)), 1e-12)
 
