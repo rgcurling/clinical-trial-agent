@@ -14,7 +14,7 @@ TrialMatch AI takes a free-text patient clinical note and returns a ranked list 
 
 **Pipeline:**
 1. Patient note → Claude extracts structured profile (age, conditions, biomarkers, stage, medications)
-2. BiomedBERT (PubMedBERT sentence embeddings) retrieves semantically similar trials from a 26,000-trial corpus
+2. ClinicalTrials.gov API fetches up to 50 live recruiting trials; BiomedBERT (PubMedBERT sentence embeddings) re-ranks them by semantic similarity to the patient profile *(TREC/M3 eval mode: BiomedBERT retrieves directly from the 26,148-trial static corpus)*
 3. Claude (Agent 1) evaluates inclusion/exclusion criteria per trial → eligibility score 0–1
 4. GPT-4o (Agent 2) independently reviews each assessment → accepts, overrides, or flags uncertain
 5. Resolver merges both agents; hard-exclusion filter removes ineligible trials
@@ -78,8 +78,14 @@ Patient Note (free text)
            │
            ▼
 ┌─────────────────────┐
+│  ClinicalTrials.gov │  API v2: up to 50 live recruiting trials
+│  API Retrieval      │  (TREC eval: 26,148-trial static corpus)
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
 │  BiomedBERT         │  PubMedBERT embeddings → cosine similarity
-│  Retriever          │  26,148 trials → top 20 candidates
+│  Re-ranker          │  → top 10 candidates
 └──────────┬──────────┘
            │
     ┌──────┴──────┐
@@ -116,7 +122,7 @@ Patient Note (free text)
 - **FastAPI REST service** — `POST /match` accepts patient text, returns ranked trials + explanations
 - **Containerized** — multi-stage Docker build, <1GB image, <15s cold start
 - **Google Cloud Run** — serverless, scales to zero, ~$0/month at low traffic
-- **Live data** — queries ClinicalTrials.gov API v2 in real time (not the static TREC corpus)
+- **Live data** — ClinicalTrials.gov API v2 fetches live recruiting trials; BiomedBERT then re-ranks them by semantic similarity before Claude eligibility assessment (not the static TREC corpus)
 - **32 automated tests** — 19 pipeline unit tests + 13 API integration tests, all passing
 
 ---
@@ -134,7 +140,7 @@ Patient Note (free text)
 9. **Explanation Quality** — FK + BERTScore, sample explanation card
 10. **Error Analysis** — 2–3 concrete FP/FN examples with clinical interpretation
 11. **Production Architecture** — FastAPI + Docker + Cloud Run diagram
-12. **Conclusions + Next Steps** — agentic orchestration layer (coming)
+12. **Agentic Demo + Conclusions** — live agent_cli.py demo; agentic orchestration layer is built (orchestrator.py drives the full pipeline via Claude tool use)
 
 ---
 

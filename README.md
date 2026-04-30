@@ -18,9 +18,14 @@ Patient note (free text)
          │
          ▼
 ┌───────────────────┐
-│  Trial Retrieval  │  ClinicalTrials.gov API  (or TF-IDF / BiomedBERT for TREC eval)
+│  Trial Retrieval  │  ClinicalTrials.gov API v2 → up to 50 live recruiting trials
+└────────┬──────────┘    (TREC eval: TF-IDF or BiomedBERT on static 26K corpus)
+         │
+         ▼
+┌───────────────────┐
+│  BiomedBERT Rank  │  PubMedBERT embeddings → re-rank by cosine similarity → top 10
 └────────┬──────────┘
-         │  top-20 candidates
+         │
          ▼
 ┌───────────────────┐   ┌─────────────────────┐
 │  Agent 1 — Claude │──▶│ Agent 2 — GPT-4o    │  independent critic review
@@ -196,6 +201,8 @@ clinical-trial-agent/
 │   │   ├── routes.py             # POST /match, GET /health
 │   │   └── models.py             # Pydantic request/response schemas
 │   ├── agents/
+│   │   ├── orchestrator.py       # Agentic loop — Claude drives the full pipeline via tool use
+│   │   ├── tools.py              # Tool schemas + ToolExecutor (BiomedBERT rank, evaluate, explain)
 │   │   ├── claude_agent.py       # Agent 1 — Claude eligibility assessor
 │   │   ├── gpt4_agent.py         # Agent 2 — GPT-4o critic
 │   │   └── resolver.py           # Two-agent discrepancy resolver
