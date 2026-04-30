@@ -6,9 +6,9 @@ Usage examples:
   python main.py --patient "58-year-old male with Stage IIIB NSCLC..."
   python main.py --patient-file data/sample_patients/patient_01.txt
   python main.py --patient-file data/sample_patients/patient_01.txt --output results/patient_01.json
+  python main.py --mode benchmark --patient-file data/sample_patients/patient_01.txt
   python main.py --eval-synthetic
   python main.py --benchmark --data-dir data/n2c2/
-  python main.py --patient-file data/sample_patients/patient_01.txt --compare-models
   python main.py --clear-cache
 """
 
@@ -19,6 +19,7 @@ import os
 import shutil
 import sys
 import time
+from pathlib import Path
 
 # Ensure trialmatch root is on the path when invoked from inside the package
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -32,10 +33,10 @@ from eval.benchmark import (
 )
 from pipeline.extractor import extract_patient_profile
 from pipeline.explainer import generate_all_cards
-from pipeline.matcher import ClaudeMatcher, GPT4oMatcher
+from pipeline.matcher import ClaudeMatcher
 from pipeline.models import PatientProfile
 from pipeline.ranker import rank_trials
-from pipeline.retriever import retrieve_trials
+from pipeline.retriever import retrieve_from_corpus, retrieve_trials
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +44,8 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+_TREC_CORPUS = Path("data/trec_2021/corpus.jsonl")
 
 
 # ── Timer helper ──────────────────────────────────────────────────────────────
@@ -66,9 +69,25 @@ def run_pipeline(
     patient_text: str,
     matcher=None,
     label: str = "Claude",
+    retriever=None,
 ) -> list[dict]:
+    """
+    Run the full TrialMatch pipeline on patient_text.
+
+    Args:
+        patient_text: raw patient description string
+        matcher: a matcher instance (defaults to ClaudeMatcher)
+        label: display label for the matcher
+        retriever: callable(patient_text, profile) -> list[Trial].
+                   Defaults to retrieve_trials() (live CT.gov API).
+    """
     if matcher is None:
         matcher = ClaudeMatcher()
+    if retriever is None:
+        retriever = lambda text, profile: retrieve_trials(
+            profile.conditions[0] if profile.conditions else text.split()[0],
+            profile=profile,
+        )
 
     print(f"\n{'='*60}")
     print(f"TrialMatch AI  |  Matcher: {label}")
@@ -85,9 +104,8 @@ def run_pipeline(
     print()
 
     # Stage 2 — Retrieve
-    condition = profile.conditions[0] if profile.conditions else patient_text.split()[0]
     with _Timer("retrieval"):
-        trials = retrieve_trials(condition, profile=profile)
+        trials = retriever(patient_text, profile)
     print(f"Trials retrieved: {len(trials)}\n")
 
     # Stage 3 — Match
@@ -157,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
     input_group.add_argument(
         "--benchmark",
         action="store_true",
-        help="Run n2c2 benchmark (requires --data-dir)",
+        help="Run TREC 2021 benchmark (requires --data-dir)",
     )
     input_group.add_argument(
         "--clear-cache",
@@ -166,6 +184,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
+        "--mode",
+        choices=["inference", "benchmark"],
+        default="inference",
+        help=(
+            "Retrieval mode: 'inference' uses the live ClinicalTrials.gov API; "
+            "'benchmark' uses the local TREC 2021 corpus via TF-IDF "
+            f"(expects {_TREC_CORPUS})"
+        ),
+    )
+    p.add_argument(
         "--output",
         metavar="PATH",
         help="Save pipeline output to a JSON file at PATH",
@@ -173,12 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--data-dir",
         metavar="DIR",
-        help="n2c2 data directory (required with --benchmark)",
-    )
-    p.add_argument(
-        "--compare-models",
-        action="store_true",
-        help="Run both Claude and GPT-4o matchers and compare results",
+        help="TREC data directory (required with --benchmark)",
     )
 
     return p
@@ -205,11 +228,11 @@ def main():
         print_synthetic_summary(results)
         return
 
-    # ── n2c2 benchmark ─────────────────────────────────────────────────────────
+    # ── TREC benchmark ─────────────────────────────────────────────────────────
     if args.benchmark:
         if not args.data_dir:
             parser.error("--benchmark requires --data-dir")
-        print(f"Running n2c2 benchmark on {args.data_dir}...")
+        print(f"Running TREC benchmark on {args.data_dir}...")
         results = run_n2c2_benchmark(args.data_dir)
         print_n2c2_summary(results)
         return
@@ -225,27 +248,20 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    if args.compare_models:
-        # Run Claude
-        claude_cards = run_pipeline(patient_text, ClaudeMatcher(), label="Claude")
-        # Run GPT-4o
-        try:
-            gpt_cards = run_pipeline(patient_text, GPT4oMatcher(), label="GPT-4o")
-            print("\n--- MODEL COMPARISON ---")
-            print(f"{'NCT ID':<15} {'Claude Score':>14} {'GPT-4o Score':>13}")
-            for cc, gc in zip(claude_cards, gpt_cards):
-                print(
-                    f"{cc['nct_id']:<15} {cc['match_score']:>14.3f} {gc['match_score']:>13.3f}"
-                )
-        except RuntimeError as e:
-            print(f"\n[Warning] GPT-4o comparison skipped: {e}")
-            gpt_cards = []
-        if args.output:
-            save_results({"claude": claude_cards, "gpt4o": gpt_cards}, args.output)
+    # Select retriever based on --mode
+    if args.mode == "benchmark":
+        retriever = lambda text, profile: retrieve_from_corpus(
+            text, _TREC_CORPUS, top_k=20
+        )
     else:
-        cards = run_pipeline(patient_text, ClaudeMatcher(), label="Claude")
-        if args.output:
-            save_results(cards, args.output)
+        retriever = lambda text, profile: retrieve_trials(
+            profile.conditions[0] if profile.conditions else text.split()[0],
+            profile=profile,
+        )
+
+    cards = run_pipeline(patient_text, ClaudeMatcher(), label="Claude", retriever=retriever)
+    if args.output:
+        save_results(cards, args.output)
 
 
 if __name__ == "__main__":

@@ -6,8 +6,10 @@ run_trec_benchmark       — TREC Clinical Trials 2021 retrieval eval, P@5 + NDC
 print_synthetic_summary  — formatted table for synthetic results
 print_trec_summary       — formatted table for TREC results
 
-NOTE: main.py calls run_n2c2_benchmark / print_n2c2_summary for the --benchmark flag.
-Those are aliased here to the TREC versions for backward compatibility.
+CLI usage (standalone):
+  python eval/benchmark.py --retriever tfidf --topic-range 26 40
+  python eval/benchmark.py --retriever biomedbert --use-critic --topic-range 26 40 \
+      --output results/run_r3.json
 """
 
 from __future__ import annotations
@@ -15,8 +17,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import SAMPLE_PATIENTS_DIR
 from eval.metrics import (
@@ -27,31 +36,30 @@ from eval.metrics import (
 )
 from pipeline.extractor import extract_patient_profile
 from pipeline.explainer import generate_all_cards
-from pipeline.matcher import ClaudeMatcher
+from pipeline.matcher import ClaudeMatcher, critic_review, resolve_discrepancies
 from pipeline.ranker import rank_trials
-from pipeline.retriever import retrieve_trials
+from pipeline.retriever import TfidfRetriever, BiomedBERTRetriever, retrieve_trials
 
 logger = logging.getLogger(__name__)
 
-# ── TREC data URLs (TrialGPT FTP mirror, publicly accessible) ────────────────
+# ── TREC data paths ───────────────────────────────────────────────────────────
 
+_TREC_DATA_DIR = Path("data/trec_2021")
 _TREC_2021_CORPUS_URL = (
     "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_corpus.jsonl"
 )
-_TREC_2021_TOPICS_URL = (
-    "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_topics.json"
-)
-_TREC_2021_QRELS_URL = (
-    "https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_qrels.json"
-)
+_TREC_2021_TOPICS_URL = "https://trec.nist.gov/data/trials/topics2021.xml"
+_TREC_2021_QRELS_URL = "https://trec.nist.gov/data/trials/qrels2021.txt"
 
-_TREC_DATA_DIR = Path("data/trec_2021")
+# Rough cost estimate per Claude API call (Sonnet 4, mixed input/output tokens)
+_COST_PER_MATCH_CALL = 0.010   # ~1500 in + 400 out tokens
+_COST_PER_CRITIC_CALL = 0.009  # ~2000 in + 200 out tokens
+_COST_PER_EXPLAIN_CALL = 0.011  # ~800 in + 600 out tokens
 
 
-# ── TREC data download helpers ────────────────────────────────────────────────
+# ── TREC data helpers ─────────────────────────────────────────────────────────
 
 def _download_if_missing(url: str, dest: Path) -> bool:
-    """Download url to dest if dest doesn't exist. Returns True on success."""
     if dest.exists():
         return True
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -66,138 +74,367 @@ def _download_if_missing(url: str, dest: Path) -> bool:
 
 
 def _ensure_trec_data() -> bool:
-    """
-    Download TREC 2021 corpus, topics, and qrels if not already present.
-    Returns True if all files are available.
-    """
     files = {
         "corpus": (_TREC_2021_CORPUS_URL, _TREC_DATA_DIR / "corpus.jsonl"),
-        "topics": (_TREC_2021_TOPICS_URL, _TREC_DATA_DIR / "topics.json"),
-        "qrels":  (_TREC_2021_QRELS_URL,  _TREC_DATA_DIR / "qrels.json"),
+        "topics": (_TREC_2021_TOPICS_URL, _TREC_DATA_DIR / "topics2021.xml"),
+        "qrels":  (_TREC_2021_QRELS_URL,  _TREC_DATA_DIR / "qrels2021.txt"),
     }
-    all_ok = True
-    for name, (url, dest) in files.items():
-        if not _download_if_missing(url, dest):
-            logger.error(f"Could not obtain TREC {name} file.")
-            all_ok = False
-    return all_ok
+    return all(_download_if_missing(url, dest) for _, (url, dest) in files.items())
 
 
-# ── TREC data loaders ─────────────────────────────────────────────────────────
+def _load_topics(data_dir: Path) -> dict[str, str]:
+    path = data_dir / "topics2021.xml"
+    tree = ET.parse(path)
+    root = tree.getroot()
+    topics = {}
+    for topic in root.findall("topic"):
+        number = topic.get("number", "").strip()
+        text = topic.text.strip() if topic.text else ""
+        if number:
+            topics[number] = text
+    return topics
 
-def _load_topics() -> dict[str, str]:
-    """Return {topic_id: patient_note_text}."""
-    path = _TREC_DATA_DIR / "topics.json"
+
+def _load_qrels(data_dir: Path) -> dict[str, dict[str, int]]:
+    path = data_dir / "qrels2021.txt"
+    qrels: dict[str, dict[str, int]] = {}
     with open(path) as f:
-        raw = json.load(f)
-    # TREC topics format: list of {number, text} or dict keyed by topic id
-    if isinstance(raw, list):
-        return {str(t["number"]): t["text"] for t in raw}
-    return {str(k): v for k, v in raw.items()}
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            topic_id, _iter, nct_id, relevance = parts[0], parts[1], parts[2], parts[3]
+            qrels.setdefault(topic_id, {})[nct_id] = int(relevance)
+    return qrels
 
 
-def _load_qrels() -> dict[str, dict[str, int]]:
+def _resolve_retrieved_trials(retriever, retrieved) -> list:
     """
-    Return {topic_id: {nct_id: relevance_grade}}.
-    Relevance grades: 0 = not relevant, 1 = partially relevant, 2 = highly relevant.
+    Convert the benchmark retriever API, list[(nct_id, score)], into Trial
+    objects for the matcher. Older local retrievers that return Trial objects
+    are still accepted for compatibility.
     """
-    path = _TREC_DATA_DIR / "qrels.json"
-    with open(path) as f:
-        return json.load(f)
+    if not retrieved:
+        return []
+    first = retrieved[0]
+    if hasattr(first, "nct_id"):
+        return retrieved
+
+    trials = []
+    for nct_id, _score in retrieved:
+        trial = retriever.get_trial(nct_id) if hasattr(retriever, "get_trial") else None
+        if trial is not None:
+            trials.append(trial)
+        else:
+            logger.warning(f"Retriever returned {nct_id}, but no Trial record was found")
+    return trials
 
 
-# ── TREC benchmark runner ─────────────────────────────────────────────────────
+# ── TREC benchmark ────────────────────────────────────────────────────────────
 
-def run_trec_benchmark(max_topics: int = 10) -> list[dict]:
+def run_trec_benchmark(
+    max_topics: int = 10,
+    *,
+    retriever_type: str = "tfidf",
+    use_critic: bool = False,
+    topic_range: Optional[tuple[int, int]] = None,
+    output_file: Optional[str] = None,
+    corpus_path: Optional[Path] = None,
+    generate_explanations: bool = True,
+    resume_from: Optional[str] = None,
+) -> dict:
     """
-    Evaluate TrialMatch AI against the TREC Clinical Trials 2021 benchmark.
-
-    For each patient topic:
-      1. Extract patient profile from the topic note
-      2. Retrieve trials via ClinicalTrials.gov API
-      3. Match and rank with ClaudeMatcher
-      4. Compute Precision@5 and NDCG@5 vs. TREC relevance judgments
+    Evaluate TrialMatch AI against TREC Clinical Trials 2021.
 
     Args:
-        max_topics: number of TREC topics to evaluate (default 10 to limit API cost)
+        max_topics:           max topics to evaluate (ignored when topic_range is set)
+        retriever_type:       'tfidf' or 'biomedbert'
+        use_critic:           run GPT-4o critic after each Claude match
+        topic_range:          (start, end) inclusive topic-ID filter; overrides max_topics
+        output_file:          save full results dict as JSON to this path
+        corpus_path:          override default corpus location
+        generate_explanations: generate patient-facing cards for top-5 (needed for Part 5)
+        resume_from:          path to checkpoint JSON — skip already-completed topics
 
-    Returns:
-        list of per-topic result dicts
+    Returns dict with keys: config, metrics, per_topic_results, critic_stats,
+    runtime_seconds, api_stats, estimated_cost_usd.
     """
+    start_time = time.perf_counter()
+
     print("\nChecking TREC 2021 data...")
     if not _ensure_trec_data():
         print(
-            "\n[Error] Could not download TREC 2021 data from FTP mirror.\n"
-            "Manual download instructions:\n"
-            "  Corpus: https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_corpus.jsonl\n"
-            "  Topics: https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_topics.json\n"
-            "  Qrels:  https://ftp.ncbi.nlm.nih.gov/pub/lu/TrialGPT/trec_2021_qrels.json\n"
-            f"Place all three files in: {_TREC_DATA_DIR.resolve()}\n"
+            "\n[Error] Could not obtain TREC 2021 data.\n"
+            f"Place corpus.jsonl, topics2021.xml, qrels2021.txt in: "
+            f"{_TREC_DATA_DIR.resolve()}\n"
         )
-        return []
+        return {}
 
-    topics = _load_topics()
-    qrels = _load_qrels()
+    _corpus = corpus_path or (_TREC_DATA_DIR / "corpus.jsonl")
+    topics = _load_topics(_TREC_DATA_DIR)
+    qrels = _load_qrels(_TREC_DATA_DIR)
+
+    # ── Select topics ─────────────────────────────────────────────────────────
+    all_ids = list(topics.keys())
+    if topic_range is not None:
+        lo, hi = topic_range
+        selected_ids = [t for t in all_ids if lo <= int(t) <= hi]
+    else:
+        selected_ids = all_ids[:max_topics]
+
+    print(
+        f"Retriever: {retriever_type}  |  Critic: {use_critic}  |  "
+        f"Topics: {selected_ids[0]}–{selected_ids[-1]} ({len(selected_ids)} total)\n"
+    )
+
+    # ── Instantiate retriever ─────────────────────────────────────────────────
+    if retriever_type == "biomedbert":
+        retriever = BiomedBERTRetriever(_corpus)
+    else:
+        retriever = TfidfRetriever(_corpus)
+
     matcher = ClaudeMatcher()
-    results = []
 
-    topic_ids = list(topics.keys())[:max_topics]
-    print(f"Evaluating {len(topic_ids)} TREC topics (of {len(topics)} total)...\n")
+    # ── Resume from checkpoint ────────────────────────────────────────────────
+    per_topic_results: list[dict] = []
+    completed_ids: set[str] = set()
+    if resume_from and Path(resume_from).exists():
+        with open(resume_from) as f:
+            checkpoint = json.load(f)
+        if isinstance(checkpoint, dict):
+            per_topic_results = checkpoint.get("partial_results", {}).get(
+                "per_topic_results", []
+            )
+        else:
+            per_topic_results = checkpoint
+        completed_ids = {r["topic_id"] for r in per_topic_results}
+        print(f"Resuming from checkpoint: {len(completed_ids)} topics already done.")
+    selected_ids = [t for t in selected_ids if t not in completed_ids]
 
-    for topic_id in topic_ids:
+    # ── Progress bar ──────────────────────────────────────────────────────────
+    try:
+        from tqdm import tqdm
+        topic_iter = tqdm(selected_ids, desc="Topics", unit="topic")
+    except ImportError:
+        topic_iter = selected_ids
+
+    claude_calls = 0
+    gpt4_calls = 0
+    critic_agreements = 0
+    critic_disagreements = 0
+    critic_overrides = 0
+    critic_flags = 0
+    running_p5_sum = sum(
+        r.get("precision_at_5", 0.0) for r in per_topic_results if "error" not in r
+    )
+
+    os.makedirs("results", exist_ok=True)
+
+    for idx, topic_id in enumerate(topic_iter):
         note_text = topics[topic_id]
-        topic_qrels = qrels.get(topic_id, {})  # {nct_id: grade}
+        topic_qrels = qrels.get(topic_id, {})
         relevant_ncts = [nct for nct, grade in topic_qrels.items() if grade > 0]
-
-        logger.info(f"Topic {topic_id}: {len(relevant_ncts)} relevant trials in qrels")
 
         try:
             profile = extract_patient_profile(note_text)
-            condition = profile.conditions[0] if profile.conditions else note_text.split()[0]
-            trials = retrieve_trials(condition, profile=profile)
-            match_results = matcher.match_trials(profile, trials)
-            ranked = rank_trials(match_results)
+            claude_calls += 1  # extractor may call Claude
 
+            retrieved = retriever.retrieve(note_text, top_k=20)
+            trials = _resolve_retrieved_trials(retriever, retrieved)
+            match_results = matcher.match_trials(profile, trials)
+            claude_calls += len(match_results)
+
+            # Apply critic if requested
+            if use_critic:
+                reviewed: list = []
+                for mr in match_results:
+                    agent2 = critic_review(profile, mr.trial, mr)
+                    gpt4_calls += 1
+                    resolved = resolve_discrepancies(
+                        mr, agent2, topic_id=topic_id, nct_id=mr.trial.nct_id
+                    )
+                    reviewed.append(resolved)
+                    if agent2.get("agree", True):
+                        critic_agreements += 1
+                    else:
+                        critic_disagreements += 1
+                        rec = agent2.get("recommendation", "")
+                        if rec == "override":
+                            critic_overrides += 1
+                        elif rec == "flag_uncertain":
+                            critic_flags += 1
+                match_results = reviewed
+
+            ranked = rank_trials(match_results)
             retrieved_ncts = [m.trial.nct_id for m in ranked]
 
             p5 = precision_at_k(retrieved_ncts, relevant_ncts, k=5)
             ndcg5 = ndcg_at_k(retrieved_ncts, topic_qrels, k=5)
+            running_p5_sum += p5
+
+            # Generate top-5 explanations
+            top5_details: list[dict] = []
+            if generate_explanations:
+                cards = generate_all_cards(ranked)
+                claude_calls += len(cards)
+            else:
+                cards = [None] * len(ranked)
+
+            for rank_i, (mr, card) in enumerate(zip(ranked, cards), 1):
+                nct = mr.trial.nct_id
+                detail = {
+                    "rank": rank_i,
+                    "nct_id": nct,
+                    "title": mr.trial.title,
+                    "overall_score": mr.overall_score,
+                    "match_score": mr.match_score,
+                    "met_criteria": mr.met_criteria,
+                    "failed_criteria": mr.failed_criteria,
+                    "uncertain_criteria": mr.uncertain_criteria,
+                    "hard_exclusion": mr.hard_exclusion,
+                    "exclusion_reason": mr.exclusion_reason,
+                    "reasoning": mr.reasoning,
+                    "critic_flagged": mr.critic_flagged,
+                    "critic_override": mr.critic_override,
+                    "uncertainty_reason": mr.uncertainty_reason,
+                    "uncertain": mr.uncertain,
+                    "trec_grade": topic_qrels.get(nct, -1),
+                    "eligibility_criteria": mr.trial.eligibility_criteria_raw,
+                }
+                if card is not None:
+                    detail["explanation"] = card.get("card_text", "")
+                    detail["fk_grade"] = card.get("fk_grade", 0.0)
+                top5_details.append(detail)
 
             result = {
                 "topic_id": topic_id,
+                "topic_text": note_text,
                 "retrieved_ncts": retrieved_ncts,
                 "relevant_ncts": relevant_ncts,
                 "precision_at_5": p5,
                 "ndcg_at_5": ndcg5,
                 "n_retrieved": len(retrieved_ncts),
                 "n_relevant_in_qrels": len(relevant_ncts),
+                "top5": top5_details,
             }
-        except Exception as e:
-            logger.error(f"Topic {topic_id} failed: {e}")
+
+        except Exception as exc:
+            logger.error(f"Topic {topic_id} failed: {exc}")
             result = {
                 "topic_id": topic_id,
-                "error": str(e),
+                "error": str(exc),
                 "precision_at_5": 0.0,
                 "ndcg_at_5": 0.0,
+                "top5": [],
             }
 
-        results.append(result)
+        per_topic_results.append(result)
+
+        # Live progress line
+        running_mean = running_p5_sum / (idx + 1)
+        p5_val = result["precision_at_5"]
         print(
-            f"  Topic {topic_id}: P@5={result['precision_at_5']:.3f}  "
-            f"NDCG@5={result['ndcg_at_5']:.3f}"
+            f"  Topic {topic_id:>3}: P@5={p5_val:.3f}  "
+            f"NDCG@5={result.get('ndcg_at_5', 0):.3f}  "
+            f"(running P@5={running_mean:.3f})"
         )
 
-    return results
+        # Checkpoint every 5 topics
+        if (idx + 1) % 5 == 0:
+            ckpt = f"results/checkpoint_topic{topic_id}.json"
+            with open(ckpt, "w") as f:
+                json.dump(
+                    {
+                        "completed_topics": [r["topic_id"] for r in per_topic_results],
+                        "partial_results": {
+                            "per_topic_results": per_topic_results,
+                        },
+                    },
+                    f,
+                    indent=2,
+                )
+            logger.info(f"Checkpoint saved → {ckpt}")
+
+    # ── Aggregate metrics ─────────────────────────────────────────────────────
+    valid = [r for r in per_topic_results if "error" not in r]
+    mean_p5 = sum(r["precision_at_5"] for r in valid) / len(valid) if valid else 0.0
+    mean_ndcg5 = sum(r["ndcg_at_5"] for r in valid) / len(valid) if valid else 0.0
+    runtime = time.perf_counter() - start_time
+
+    n_critic_total = critic_agreements + critic_disagreements
+    agreement_rate = (critic_agreements / n_critic_total) if n_critic_total > 0 else None
+
+    total_api_calls = claude_calls + gpt4_calls
+    estimated_cost = round(
+        claude_calls * (
+            _COST_PER_MATCH_CALL
+            + (_COST_PER_EXPLAIN_CALL if generate_explanations else 0.0)
+        ) / (2 if generate_explanations else 1)
+        + gpt4_calls * _COST_PER_CRITIC_CALL,
+        2,
+    )
+
+    results_dict = {
+        "config": {
+            "retriever": retriever_type,
+            "use_critic": use_critic,
+            "topic_range": list(topic_range) if topic_range else None,
+            "max_topics": max_topics,
+            "generate_explanations": generate_explanations,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+        "metrics": {
+            "p_at_5": round(mean_p5, 4),
+            "ndcg_at_5": round(mean_ndcg5, 4),
+            "num_topics": len(valid),
+            "num_trials_evaluated": claude_calls,
+        },
+        "per_topic_results": per_topic_results,
+        "critic_stats": {
+            "total_reviewed": n_critic_total,
+            "agreement_rate": round(agreement_rate, 4) if agreement_rate is not None else None,
+            "total_disagreements": critic_disagreements,
+            "overrides": critic_overrides,
+            "flags": critic_flags,
+        },
+        "runtime_seconds": round(runtime, 1),
+        "total_api_calls": total_api_calls,
+        "api_stats": {
+            "total_claude_calls": claude_calls,
+            "total_gpt4_calls": gpt4_calls,
+            "estimated_cost_usd": estimated_cost,
+        },
+        "estimated_cost_usd": estimated_cost,
+    }
+
+    if output_file:
+        os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+        with open(output_file, "w") as f:
+            json.dump(results_dict, f, indent=2)
+        print(f"\nResults saved → {output_file}")
+
+    return results_dict
 
 
-def print_trec_summary(results: list[dict]) -> None:
-    """Print a formatted summary table for TREC benchmark results."""
-    if not results:
+def print_trec_summary(results) -> None:
+    """Print a formatted summary table. Accepts list[dict] or the new results dict."""
+    # Handle both old list format and new dict format
+    if isinstance(results, dict):
+        per_topic = results.get("per_topic_results", [])
+        metrics = results.get("metrics", {})
+    else:
+        per_topic = results
+        metrics = {}
+
+    if not per_topic:
         print("\nNo TREC results to summarize.")
         return
 
-    valid = [r for r in results if "error" not in r]
-    errors = [r for r in results if "error" in r]
+    valid = [r for r in per_topic if "error" not in r]
+    errors = [r for r in per_topic if "error" in r]
 
     print(f"\n{'='*65}")
     print(f"{'TREC Clinical Trials 2021 Benchmark':^65}")
@@ -205,38 +442,33 @@ def print_trec_summary(results: list[dict]) -> None:
     print(f"{'Topic':<10} {'Retrieved':>10} {'Relevant':>10} {'P@5':>8} {'NDCG@5':>8}")
     print(f"{'-'*65}")
 
-    for r in results:
+    for r in per_topic:
         if "error" in r:
-            print(f"{r['topic_id']:<10} {'ERROR':<10} {r['error'][:30]}")
+            print(f"{r['topic_id']:<10} {'ERROR':>10}  {r['error'][:30]}")
             continue
-        flag = " ⚠️" if r["precision_at_5"] == 0.0 else ""
+        flag = " *" if r["precision_at_5"] == 0.0 else ""
         print(
-            f"{r['topic_id']:<10} {r['n_retrieved']:>10} "
-            f"{r['n_relevant_in_qrels']:>10} "
+            f"{r['topic_id']:<10} {r.get('n_retrieved', 0):>10} "
+            f"{r.get('n_relevant_in_qrels', 0):>10} "
             f"{r['precision_at_5']:>8.3f} {r['ndcg_at_5']:>8.3f}{flag}"
         )
 
     if valid:
-        mean_p5 = sum(r["precision_at_5"] for r in valid) / len(valid)
-        mean_ndcg5 = sum(r["ndcg_at_5"] for r in valid) / len(valid)
+        mean_p5 = metrics.get("p_at_5") or sum(r["precision_at_5"] for r in valid) / len(valid)
+        mean_ndcg5 = metrics.get("ndcg_at_5") or sum(r["ndcg_at_5"] for r in valid) / len(valid)
         print(f"{'-'*65}")
         print(f"{'MEAN':<10} {' ':>10} {' ':>10} {mean_p5:>8.3f} {mean_ndcg5:>8.3f}")
         print(f"{'='*65}")
         print(f"\nTopics evaluated: {len(valid)}  |  Errors: {len(errors)}")
-        print(f"Target: P@5 > ClinicalTrials.gov keyword baseline")
 
     if errors:
-        print(f"\nFailed topics: {[r['topic_id'] for r in errors]}")
+        print(f"Failed topics: {[r['topic_id'] for r in errors]}")
 
 
 # ── Synthetic benchmark ───────────────────────────────────────────────────────
 
 def run_synthetic_benchmark() -> list[dict]:
-    """
-    End-to-end eval on all patient .txt files in data/sample_patients/.
-    Computes FK grade and BERTScore for each output card.
-    Returns list of per-patient result dicts.
-    """
+    """End-to-end eval on all patient .txt files in data/sample_patients/."""
     patient_dir = Path(SAMPLE_PATIENTS_DIR)
     patient_files = sorted(patient_dir.glob("*.txt"))
 
@@ -290,7 +522,6 @@ def run_synthetic_benchmark() -> list[dict]:
 
 
 def print_synthetic_summary(results: list[dict]) -> None:
-    """Print formatted table of synthetic benchmark results."""
     if not results:
         print("No synthetic results to summarize.")
         return
@@ -305,7 +536,7 @@ def print_synthetic_summary(results: list[dict]) -> None:
         if "error" in r:
             print(f"{r['patient_file']:<20} {'ERROR':<7}  {r['error'][:35]}")
             continue
-        fk_flag = " ⚠️" if r["mean_fk"] > 8 else ""
+        fk_flag = " *" if r["mean_fk"] > 8 else ""
         print(
             f"{r['patient_file']:<20} {r['n_trials_returned']:>7} "
             f"{r['mean_fk']:>9.2f}{fk_flag} {r['mean_bertscore']:>11.3f}"
@@ -321,10 +552,124 @@ def print_synthetic_summary(results: list[dict]) -> None:
         print(f"\nFK target: ≤ 8.0  |  BERTScore target: ≥ 0.85")
         fk_violations = sum(1 for r in valid if r["mean_fk"] > 8)
         if fk_violations:
-            print(f"⚠️  {fk_violations} patient(s) exceed FK grade target")
+            print(f"  {fk_violations} patient(s) exceed FK grade target")
 
 
-# ── Backward-compatibility aliases (main.py imports these names) ──────────────
+# ── Backward-compatibility aliases ───────────────────────────────────────────
 
 run_n2c2_benchmark = run_trec_benchmark
 print_n2c2_summary = print_trec_summary
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
+def _build_parser():
+    import argparse
+    p = argparse.ArgumentParser(
+        prog="benchmark",
+        description="Run TREC Clinical Trials 2021 benchmark for TrialMatch AI",
+    )
+    p.add_argument(
+        "--retriever",
+        choices=["tfidf", "biomedbert"],
+        default="tfidf",
+        help="Retrieval method (default: tfidf)",
+    )
+    p.add_argument(
+        "--use-critic",
+        action="store_true",
+        default=False,
+        help="Enable GPT-4o critic agent (independent second reviewer per trial)",
+    )
+    # Accept either --topic-range START END  OR  --topic-start N --topic-end N
+    p.add_argument(
+        "--topic-range",
+        nargs=2,
+        type=int,
+        metavar=("START", "END"),
+        help="Inclusive topic-ID range, e.g. --topic-range 26 40",
+    )
+    p.add_argument(
+        "--topic-start",
+        type=int,
+        metavar="N",
+        help="Start of topic range (alternative to --topic-range)",
+    )
+    p.add_argument(
+        "--topic-end",
+        type=int,
+        metavar="N",
+        help="End of topic range (alternative to --topic-range)",
+    )
+    p.add_argument(
+        "--max-topics",
+        type=int,
+        default=10,
+        help="Max topics when no range is specified (default: 10)",
+    )
+    p.add_argument(
+        "--output",
+        metavar="PATH",
+        help="Save results JSON to this path",
+    )
+    p.add_argument(
+        "--no-explanations",
+        action="store_true",
+        default=False,
+        help="Skip explanation generation (faster, but Part 5 metrics unavailable)",
+    )
+    p.add_argument(
+        "--resume-from",
+        metavar="CHECKPOINT",
+        help="Resume from a checkpoint JSON (skip already-completed topics)",
+    )
+    p.add_argument(
+        "--resume-from-checkpoint",
+        metavar="CHECKPOINT",
+        help="Alias for --resume-from",
+    )
+    return p
+
+
+if __name__ == "__main__":
+    import sys
+    import os
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)-8s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    # Allow running as  python eval/benchmark.py  from trialmatch/
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    args = _build_parser().parse_args()
+
+    # Resolve topic range from either --topic-range or --topic-start/--topic-end
+    if args.topic_range:
+        tr = tuple(args.topic_range)
+    elif args.topic_start is not None and args.topic_end is not None:
+        tr = (args.topic_start, args.topic_end)
+    else:
+        tr = None
+
+    out = args.output or f"results/run_{args.retriever}{'_critic' if args.use_critic else ''}.json"
+
+    results = run_trec_benchmark(
+        max_topics=args.max_topics,
+        retriever_type=args.retriever,
+        use_critic=args.use_critic,
+        topic_range=tr,
+        output_file=out,
+        generate_explanations=not args.no_explanations,
+        resume_from=args.resume_from or args.resume_from_checkpoint,
+    )
+    print_trec_summary(results)
+    api = results.get("api_stats", {})
+    print(
+        f"\nRuntime: {results.get('runtime_seconds', 0):.1f}s  |  "
+        f"Claude calls: {api.get('total_claude_calls', 0)}  |  "
+        f"GPT-4o calls: {api.get('total_gpt4_calls', 0)}  |  "
+        f"Est. cost: ${results.get('estimated_cost_usd', 0):.2f}"
+    )

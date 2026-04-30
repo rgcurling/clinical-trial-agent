@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Baseline",
+    "output_file": "results/run_baseline.json",
+    "p_at_5": 0.5714,
+    "ndcg_at_5": 0.4596,
+    "runtime_seconds": 1176.8,
+    "total_api_calls": 209,
+    "estimated_cost_usd": 2.19,
+    "status": "ok"
+  },
+  {
+    "name": "R1 (BiomedBERT)",
+    "output_file": "results/run_r1.json",
+    "p_at_5": 0.6667,
+    "ndcg_at_5": 0.6131,
+    "runtime_seconds": 1272.0,
+    "total_api_calls": 237,
+    "estimated_cost_usd": 2.49,
+    "status": "ok"
+  },
+  {
+    "name": "R2 (Critic)",
+    "output_file": "results/run_r2.json",
+    "p_at_5": 0.5231,
+    "ndcg_at_5": 0.423,
+    "runtime_seconds": 1347.2,
+    "total_api_calls": 328,
+    "estimated_cost_usd": 3.25,
+    "status": "ok"
+  },
+  {
+    "name": "R3 (Combined)",
+    "output_file": "results/run_r3.json",
+    "p_at_5": 0.6429,
+    "ndcg_at_5": 0.5818,
+    "runtime_seconds": 1633.0,
+    "total_api_calls": 361,
+    "estimated_cost_usd": 3.58,
+    "status": "ok"
+  }
+]

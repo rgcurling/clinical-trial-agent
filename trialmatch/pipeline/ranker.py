@@ -7,7 +7,7 @@ and uncertain_count ascending. Returns at most MAX_TRIALS_TO_RETURN.
 
 import logging
 
-from config import EXCLUSION_CONFIDENCE_THRESHOLD, MAX_TRIALS_TO_RETURN
+from config import MAX_TRIALS_TO_RETURN
 from pipeline.models import MatchResult
 
 logger = logging.getLogger(__name__)
@@ -17,23 +17,14 @@ def rank_trials(match_results: list[MatchResult]) -> list[MatchResult]:
     """
     Filter and rank matched trials.
 
-    Hard filter: drop any trial where an exclusion criterion was triggered
-    with confidence > EXCLUSION_CONFIDENCE_THRESHOLD.
+    Hard filter: drop any trial where hard_exclusion is True.
 
     Sort: match_score descending, then uncertain_count ascending
     (fewer unknowns is better at equal score).
 
     Returns at most MAX_TRIALS_TO_RETURN results.
     """
-    filtered = [
-        m for m in match_results
-        if not any(
-            r.criterion_type == "exclusion"
-            and r.eligible == "false"
-            and r.confidence > EXCLUSION_CONFIDENCE_THRESHOLD
-            for r in m.criterion_results
-        )
-    ]
+    filtered = [m for m in match_results if not m.hard_exclusion]
 
     logger.info(
         f"Ranking: {len(match_results)} total → "

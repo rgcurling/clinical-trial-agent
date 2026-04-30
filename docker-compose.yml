@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  trialmatch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: trialmatch-ai:latest
+    container_name: trialmatch-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PORT=8000
+      - WORKERS=4
+      - CORS_ORIGINS=*
+    volumes:
+      # Persist BiomedBERT + TF-IDF caches across container restarts
+      - trialmatch_cache:/app/trialmatch/data/trec_2021
+      - trialmatch_trial_cache:/app/trialmatch/data/cached_trials
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: nginx reverse proxy (uncomment for production TLS)
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     trialmatch:
+  #       condition: service_healthy
+
+volumes:
+  trialmatch_cache:
+  trialmatch_trial_cache:

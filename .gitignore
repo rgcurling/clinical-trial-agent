@@ -1,0 +1,39 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+*.pyo
+
+# ── Environment ───────────────────────────────────────────────────────────────
+.env
+.env.local
+trialmatch/.env
+
+# ── Large binary / generated caches ──────────────────────────────────────────
+# TREC 2021 corpus (131 MB — exceeds GitHub 100 MB limit)
+trialmatch/data/trec_2021/corpus.jsonl
+# ML model caches — regenerate with first run
+trialmatch/data/trec_2021/*.pkl
+# API response cache
+trialmatch/data/cached_trials/
+
+# ── Experiment results (committed selectively after final runs) ───────────────
+# Keep final run JSON, comparison CSV, and figure PNGs in git.
+# Exclude intermediate pilot / smoke-test files and per-config checkpoints.
+trialmatch/results/pilot_*.json
+trialmatch/results/smoke_*.json
+trialmatch/results/ckpt_*.json
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+.pytest_cache/
+*.pytest_cache
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+*.log

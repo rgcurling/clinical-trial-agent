@@ -1,0 +1,97 @@
+EXPLANATION OUTLIERS — TrialMatch AI M3
+============================================================
+
+TOP 3 WORST FK GRADE (too complex for patients)
+------------------------------------------------------------
+Topic 32 / NCT03690024  FK=16.8
+**TRIAL NAME:** Study of Children with Hemolytic Uremic Syndrome at Assiut Hospital
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You are under 18 years old and have been told you have Hemolytic Uremic Syndrome
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- (No additional information needed to confirm your eligibility)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT03690024
+
+Topic 35 / NCT04356079  FK=14.6
+**TRIAL NAME:** Study of Family and Environmental Causes of Migraine
+
+**MATCH SCORE:** 10.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have migraine headaches
+
+**THINGS TO CLARIFY WITH YOUR DOCTOR:**
+- (No additional information needed)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04356079
+
+Topic 27 / NCT04244383  FK=13.5
+**TRIAL NAME:** Study of How Your Body Fights Hepatitis C
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- You have long-term hepatitis C
+
+**THINGS TO TALK ABOUT WITH YOUR DOCTOR:**
+- (No extra information needed from your medical records)
+
+**LEARN MORE:**
+https://clinicaltrials.gov/study/NCT04244383
+
+
+TOP 3 WORST BERTSCORE (potential hallucination risk)
+------------------------------------------------------------
+Topic 27 / NCT03226717  BERTScore F1=0.768
+**TRIAL NAME:** Study of Hepatitis C Treatments and Joint Pain
+
+**MATCH SCORE:** 5.0/10
+
+**WHY YOU MAY QUALIFY:**
+- We did not find clear matches with your info
+
+**THINGS TO ASK YOUR DOCTOR:**
+- Do I have hepatitis C? Was this shown by a PCR blood test?
+- Do I have joint pain or arthritis because of my hepatitis C?
+- Am I taking hepatitis C drugs now? Or will I start taking them soon?
+
+**LEARN MOR
+
+Topic 40 / NCT04184661  BERTScore F1=0.770
+TRIAL NAME: Study of Two Bone Treatments on Bone Cells
+
+MATCH SCORE: 0.0/10
+
+WHY YOU MAY QUALIFY:
+- No matching criteria were found based on your information
+
+THINGS TO CLARIFY WITH YOUR DOCTOR:
+- Have you been told about this study and would you be willing to take part?
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT04184661
+
+**Note: This trial may not be the best fit for you based on the very 
+
+Topic 27 / NCT02393365  BERTScore F1=0.772
+TRIAL NAME: Study of Hepatitis C Testing in Belgium
+
+MATCH SCORE: 0.0/10
+
+WHY YOU MAY QUALIFY:
+- No criteria match your situation
+
+THINGS TO ASK YOUR DOCTOR:
+- Am I having same-day surgery on my stomach or digestive system?
+
+LEARN MORE:
+https://clinicaltrials.gov/study/NCT02393365
+
+**Note: This match score is very low. This trial may not be right for you. Talk to your doctor about other options.**
+
