@@ -81,7 +81,7 @@ async def match_patient(body: MatchRequest, background_tasks: BackgroundTasks, r
         ]
     except Exception as exc:
         logger.error(f"ClinicalTrials.gov fetch failed: {exc}")
-        raise HTTPException(status_code=502, detail="Could not reach ClinicalTrials.gov")
+        raise HTTPException(status_code=502, detail=f"Could not reach ClinicalTrials.gov: {exc}")
 
     n_candidates = len(trials)
     if not trials:
@@ -167,10 +167,10 @@ def _profile_out(profile) -> PatientProfileOut:
     return PatientProfileOut(
         conditions=profile.conditions or [],
         age=profile.age,
-        gender=profile.gender,
+        gender=getattr(profile, "gender", None),
         biomarkers=profile.biomarkers or [],
         stage=profile.stage,
-        medications=profile.medications or [],
+        medications=getattr(profile, "medications", None) or getattr(profile, "prior_treatments", None) or [],
         performance_status=getattr(profile, "performance_status", None),
     )
 
