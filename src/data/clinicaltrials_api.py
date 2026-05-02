@@ -16,7 +16,8 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
-_DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=30)
+_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+_NOMINATIM_TIMEOUT = aiohttp.ClientTimeout(total=5)
 
 
 class ClinicalTrialsAPI:
@@ -34,7 +35,10 @@ class ClinicalTrialsAPI:
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def __aenter__(self) -> "ClinicalTrialsAPI":
-        self._session = aiohttp.ClientSession(timeout=self._timeout)
+        self._session = aiohttp.ClientSession(
+            timeout=self._timeout,
+            headers={"User-Agent": "TrialMatchAI/1.0 (clinical trial matching; contact: research)"},
+        )
         return self
 
     async def __aexit__(self, *_) -> None:
@@ -52,36 +56,64 @@ class ClinicalTrialsAPI:
         limit: int = 50,
     ) -> list[dict]:
         """
-        Search for trials matching *query_text*.
+        Search for trials matching *query_text*, optionally filtered by location.
+
+        If *location* is provided (city/state or zip), it is geocoded via
+        OpenStreetMap Nominatim and passed as filter.geo to ClinicalTrials.gov.
+        On geocoding failure the search falls back to condition-only.
 
         Returns a list of normalized trial dicts with keys:
             nct_id, title, phase, status, summary, eligibility,
             conditions, locations, contact, trial_url
         """
-        params = self._build_params(query_text, location, max_distance, status, limit)
+        params = self._build_params(query_text, status, limit)
+
+        if location:
+            coords = await self._geocode(location)
+            if coords:
+                lat, lon = coords
+                params["filter.geo"] = f"distance({lat},{lon},{max_distance}mi)"
+                logger.info(f"Geocoded '{location}' → ({lat}, {lon}), filtering within {max_distance}mi")
+            else:
+                logger.warning(f"Could not geocode '{location}' — searching without location filter")
+
         raw = await self._get_with_retry(BASE_URL, params)
         studies = raw.get("studies", [])
         return [t for s in studies if (t := self._parse_study(s)) is not None]
 
     # ── internal ───────────────────────────────────────────────────────────────
 
+    async def _geocode(self, location: str) -> Optional[tuple[float, float]]:
+        """
+        Convert a free-text location (city/state, zip, address) to (lat, lon)
+        using OpenStreetMap Nominatim. Returns None on any failure.
+        """
+        if self._session is None:
+            return None
+        try:
+            async with self._session.get(
+                _NOMINATIM_URL,
+                params={"q": location, "format": "json", "limit": 1},
+                timeout=_NOMINATIM_TIMEOUT,
+            ) as resp:
+                if not resp.ok:
+                    return None
+                results = await resp.json()
+                if not results:
+                    return None
+                return float(results[0]["lat"]), float(results[0]["lon"])
+        except Exception as exc:
+            logger.warning(f"Geocoding failed for '{location}': {exc}")
+            return None
+
     @staticmethod
-    def _build_params(
-        query_text: str,
-        location: Optional[str],
-        max_distance: int,
-        status: str,
-        limit: int,
-    ) -> dict:
-        params: dict = {
+    def _build_params(query_text: str, status: str, limit: int) -> dict:
+        return {
             "query.cond": query_text,
             "filter.overallStatus": status,
             "pageSize": min(limit, 100),
             "format": "json",
         }
-        if location:
-            params["filter.geo"] = f"distance({location},{max_distance}mi)"
-        return params
 
     async def _get_with_retry(self, url: str, params: dict) -> dict:
         session = self._session

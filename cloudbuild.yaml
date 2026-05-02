@@ -1,0 +1,65 @@
+# Cloud Build — triggered on push to main
+#
+# Prerequisites (one-time):
+#   gcloud artifacts repositories create trialmatch \
+#     --repository-format=docker --location=us-central1
+#   gcloud secrets create ANTHROPIC_API_KEY --data-file=-
+#   gcloud secrets create OPENAI_API_KEY --data-file=-
+#
+# To create the trigger via gcloud:
+#   gcloud builds triggers create github \
+#     --repo-name=clinical-trial-agent \
+#     --repo-owner=rgcurling \
+#     --branch-pattern=^main$ \
+#     --build-config=cloudbuild.yaml
+
+substitutions:
+  _REGION: us-central1
+  _REPO: trialmatch
+  _SERVICE: trialmatch-ai
+
+steps:
+  # 1. Build production image (no BiomedBERT — keeps image < 1 GB)
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target=production
+      - -t
+      - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/$_SERVICE:$SHORT_SHA
+      - -t
+      - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/$_SERVICE:latest
+      - .
+
+  # 2. Push both tags
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/$_SERVICE
+
+  # 3. Deploy to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE
+      - --image=$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/$_SERVICE:$SHORT_SHA
+      - --platform=managed
+      - --region=$_REGION
+      - --allow-unauthenticated
+      - --memory=2Gi
+      - --cpu=2
+      - --timeout=300
+      - --concurrency=10
+      - --min-instances=0
+      - --max-instances=5
+      - --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest
+      - --set-env-vars=WORKERS=1,PYTHONPATH=/app
+
+images:
+  - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/$_SERVICE:$SHORT_SHA
+  - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/$_SERVICE:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

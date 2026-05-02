@@ -3,7 +3,13 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from pipeline.matcher import ClaudeMatcher, compute_match_score, parse_criteria
+from pipeline.matcher import (
+    ClaudeMatcher,
+    compute_match_score,
+    compute_potential_score,
+    generate_clarifying_questions,
+    parse_criteria,
+)
 from pipeline.models import MatchResult, PatientProfile, Trial
 
 SAMPLE_PROFILE = PatientProfile(
@@ -69,6 +75,56 @@ class TestComputeMatchScore(unittest.TestCase):
         self.assertEqual(score, 0.0)
 
 
+class TestComputePotentialScore(unittest.TestCase):
+    def test_all_met_no_uncertain(self):
+        score = compute_potential_score(["a", "b"], [], ["c"])
+        self.assertAlmostEqual(score, 2 / 3)
+
+    def test_uncertain_lifts_score(self):
+        score = compute_potential_score(["a"], ["b"], [])
+        self.assertAlmostEqual(score, 1.0)
+
+    def test_empty_lists_returns_zero(self):
+        self.assertEqual(compute_potential_score([], [], []), 0.0)
+
+    def test_all_failed_returns_zero(self):
+        self.assertAlmostEqual(compute_potential_score([], [], ["a", "b"]), 0.0)
+
+
+class TestGenerateClarifyingQuestions(unittest.TestCase):
+    def test_empty_input_returns_empty(self):
+        mock_client = MagicMock()
+        result = generate_clarifying_questions(mock_client, [])
+        self.assertEqual(result, [])
+        mock_client.messages.create.assert_not_called()
+
+    @patch("pipeline.matcher.anthropic.Anthropic")
+    def test_returns_one_question_per_criterion(self, mock_anthropic):
+        fake_response = json.dumps([
+            {"criterion": "PD-L1 expression", "question": "Do you have IHC results for PD-L1?"},
+        ])
+        mock_msg = MagicMock()
+        mock_msg.content = [MagicMock(text=fake_response)]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_msg
+
+        result = generate_clarifying_questions(mock_client, ["PD-L1 expression"])
+        self.assertEqual(len(result), 1)
+        self.assertIn("criterion", result[0])
+        self.assertIn("question", result[0])
+
+    @patch("pipeline.matcher.anthropic.Anthropic")
+    def test_falls_back_on_malformed_json(self, mock_anthropic):
+        mock_msg = MagicMock()
+        mock_msg.content = [MagicMock(text="not json at all")]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_msg
+
+        result = generate_clarifying_questions(mock_client, ["ECOG status"])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["criterion"], "ECOG status")
+
+
 class TestClaudeMatcher(unittest.TestCase):
     def _make_mock_client(self):
         mock_msg = MagicMock()
@@ -113,6 +169,52 @@ class TestClaudeMatcher(unittest.TestCase):
         trials = [SAMPLE_TRIAL] * 15
         results = matcher.match_trials(SAMPLE_PROFILE, trials)
         self.assertLessEqual(len(results), 10)
+
+    @patch("pipeline.matcher.anthropic.Anthropic")
+    def test_potential_score_set_on_result(self, mock_anthropic):
+        mock_anthropic.return_value = self._make_mock_client()
+        matcher = ClaudeMatcher()
+        result = matcher.match_trial(SAMPLE_PROFILE, SAMPLE_TRIAL)
+        # FAKE_CLAUDE_RESPONSE: 2 met, 0 failed, 0 uncertain → potential_score = 2/2 = 1.0
+        self.assertAlmostEqual(result.potential_score, 1.0, places=5)
+
+    @patch("pipeline.matcher.anthropic.Anthropic")
+    def test_clarifying_questions_empty_when_no_uncertain(self, mock_anthropic):
+        mock_anthropic.return_value = self._make_mock_client()
+        matcher = ClaudeMatcher()
+        result = matcher.match_trial(SAMPLE_PROFILE, SAMPLE_TRIAL)
+        self.assertEqual(result.clarifying_questions, [])
+
+    @patch("pipeline.matcher.anthropic.Anthropic")
+    def test_potential_score_higher_than_overall_when_uncertain(self, mock_anthropic):
+        uncertain_response = json.dumps({
+            "overall_score": 0.5,
+            "met_criteria": ["Age 18 or older"],
+            "failed_criteria": [],
+            "uncertain_criteria": ["Diagnosis of non-small cell lung cancer"],
+            "hard_exclusion": False,
+            "exclusion_reason": None,
+            "reasoning": "Uncertain about diagnosis.",
+        })
+        clarify_response = json.dumps([
+            {"criterion": "Diagnosis of non-small cell lung cancer",
+             "question": "Can you confirm the histological diagnosis of NSCLC?"}
+        ])
+
+        mock_msg_match = MagicMock()
+        mock_msg_match.content = [MagicMock(text=uncertain_response)]
+        mock_msg_clarify = MagicMock()
+        mock_msg_clarify.content = [MagicMock(text=clarify_response)]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = [mock_msg_match, mock_msg_clarify]
+        mock_anthropic.return_value = mock_client
+
+        matcher = ClaudeMatcher()
+        result = matcher.match_trial(SAMPLE_PROFILE, SAMPLE_TRIAL)
+        self.assertGreater(result.potential_score, result.overall_score)
+        self.assertEqual(len(result.clarifying_questions), 1)
+        self.assertIn("criterion", result.clarifying_questions[0])
 
 
 if __name__ == "__main__":

@@ -37,7 +37,9 @@ class MatchResult:
     reasoning: str
     match_score: float          # 0.0 if hard_exclusion else overall_score
     uncertain_count: int        # len(uncertain_criteria)
+    potential_score: float = 0.0  # score if all uncertain criteria resolved positively
     uncertain: bool = False     # critic set this when ≥2 discrepancies found
     critic_flagged: bool = False  # critic set this when exactly 1 discrepancy found
     critic_override: bool = False
     uncertainty_reason: list[str] = field(default_factory=list)
+    clarifying_questions: list[dict] = field(default_factory=list)

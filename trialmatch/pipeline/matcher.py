@@ -220,6 +220,54 @@ def compute_match_score(overall_score: float, hard_exclusion: bool) -> float:
     return 0.0 if hard_exclusion else overall_score
 
 
+def compute_potential_score(
+    met: list[str], uncertain: list[str], failed: list[str]
+) -> float:
+    """Score if every uncertain criterion resolved positively."""
+    total = len(met) + len(uncertain) + len(failed)
+    if total == 0:
+        return 0.0
+    return (len(met) + len(uncertain)) / total
+
+
+_CLARIFY_PROMPT = """\
+You are a clinical research coordinator. Given a list of uncertain eligibility criteria for a clinical trial, write one specific clinical question per criterion that would resolve the uncertainty.
+
+Uncertain criteria:
+{criteria}
+
+Return ONLY a valid JSON array with no other text:
+[
+  {{"criterion": "<exact criterion text>", "question": "<specific question to resolve it>"}},
+  ...
+]
+"""
+
+
+def generate_clarifying_questions(
+    client: anthropic.Anthropic,
+    uncertain_criteria: list[str],
+) -> list[dict]:
+    """Return one targeted clarifying question per uncertain criterion."""
+    if not uncertain_criteria:
+        return []
+    prompt = _CLARIFY_PROMPT.format(
+        criteria="\n".join(f"- {c}" for c in uncertain_criteria)
+    )
+    try:
+        msg = client.messages.create(
+            model=PRIMARY_MODEL,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = _strip_fences(msg.content[0].text.strip())
+        result = json.loads(raw)
+        return result if isinstance(result, list) else []
+    except Exception as exc:
+        logger.warning(f"Clarifying questions generation failed: {exc}")
+        return [{"criterion": c, "question": "Please provide more information about this criterion."} for c in uncertain_criteria]
+
+
 # ── Claude matcher (primary) ──────────────────────────────────────────────────
 
 class ClaudeMatcher:
@@ -246,6 +294,8 @@ class ClaudeMatcher:
         reasoning = result_dict.get("reasoning", "")
 
         score = compute_match_score(overall_score, hard_exclusion)
+        potential = compute_potential_score(met_criteria, uncertain_criteria, failed_criteria)
+        clarifying_questions = generate_clarifying_questions(self.client, uncertain_criteria)
 
         return MatchResult(
             trial=trial,
@@ -258,6 +308,8 @@ class ClaudeMatcher:
             reasoning=reasoning,
             match_score=score,
             uncertain_count=len(uncertain_criteria),
+            potential_score=potential,
+            clarifying_questions=clarifying_questions,
         )
 
     def match_trials(
