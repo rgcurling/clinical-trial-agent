@@ -13,7 +13,7 @@ Patient note (free text)
         │
         ▼
 ┌───────────────────┐
-│  Profile Extractor│  Claude extracts age, conditions, biomarkers, stage
+│  Profile Extractor│  Claude Haiku extracts age, conditions, biomarkers, stage
 └────────┬──────────┘
          │
          ▼
@@ -29,7 +29,7 @@ Patient note (free text)
          ▼
 ┌───────────────────┐   ┌─────────────────────┐
 │  Agent 1 — Claude │──▶│ Agent 2 — GPT-4o    │  independent critic review
-│  per-trial match  │   │ accepts / overrides  │
+│  Sonnet matcher   │   │ accepts / overrides  │
 └────────┬──────────┘   └──────────┬──────────┘
          │                         │
          └──────────┬──────────────┘
@@ -43,7 +43,7 @@ Patient note (free text)
          └────────┬────────┘
                   ▼
          ┌─────────────────┐
-         │  Explainer      │  FK-controlled patient card (≤ grade 8)
+         │  Explainer      │  FK-controlled patient card (≤ grade 8); Haiku simplification pass
          └─────────────────┘
                   │
                   ▼
@@ -105,7 +105,7 @@ API docs available at `http://localhost:8000/docs` (Swagger) and `/redoc`.
 ### `GET /health`
 
 ```json
-{"status": "ok", "version": "1.0.0", "model": "claude-sonnet-4-20250514"}
+{"status": "ok", "version": "1.0.0", "model": "claude-sonnet-4-20250514", "fast_model": "claude-haiku-4-5-20251001"}
 ```
 
 ### `POST /match`
@@ -176,7 +176,7 @@ Four ablation configurations evaluated on TREC Clinical Trials 2021 (topics 26�
 ```bash
 cd trialmatch
 
-# Full run — all 4 configs, topics 26–40 (~2–4 h, ~$15 in API costs)
+# Full run — all 4 configs, topics 26–40 (~2–4 h, ~$5–8 in API costs)
 python run_experiments.py --fresh --topic-range 26 40
 
 # If interrupted, resume without --fresh (per-config checkpoints every 5 topics)
@@ -278,6 +278,13 @@ The script creates an Artifact Registry repo, builds the image via Cloud Build, 
 | `PORT` | No (default 8000) | Service port |
 | `WORKERS` | No (default 4) | Uvicorn worker count |
 | `CORS_ORIGINS` | No (default `*`) | Comma-separated allowed origins |
+
+### Model tiers
+
+| Constant | Model | Used for |
+|----------|-------|----------|
+| `PRIMARY_MODEL` | `claude-sonnet-4-20250514` | Per-trial eligibility matching (Agent 1) |
+| `FAST_MODEL` | `claude-haiku-4-5-20251001` | Patient extraction, criteria parsing fallback, clarifying questions, FK simplification |
 
 ---
 

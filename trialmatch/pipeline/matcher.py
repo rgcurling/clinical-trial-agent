@@ -15,7 +15,7 @@ from typing import Optional
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY, BASELINE_MODEL, MAX_TRIALS_TO_MATCH, PRIMARY_MODEL
+from config import ANTHROPIC_API_KEY, BASELINE_MODEL, FAST_MODEL, MAX_TRIALS_TO_MATCH, PRIMARY_MODEL
 from pipeline.models import (
     MatchResult,
     PatientProfile,
@@ -70,7 +70,7 @@ def _parse_criteria_via_llm(raw: str) -> dict[str, list[str]]:
         f"Eligibility text:\n{raw}"
     )
     msg = client.messages.create(
-        model=PRIMARY_MODEL,
+        model=FAST_MODEL,
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -120,14 +120,16 @@ Assess the patient against these criteria and return ONLY valid JSON with no oth
   "uncertain_criteria": ["<criterion where patient info is missing or ambiguous>", ...],
   "hard_exclusion": <true if any exclusion criterion is clearly triggered, else false>,
   "exclusion_reason": "<which exclusion criterion was triggered, or null>",
-  "reasoning": "<one short paragraph explaining the overall assessment>"
+  "reasoning": "<one short paragraph explaining the overall assessment>",
+  "clarifying_questions": [{{"criterion": "<uncertain criterion text>", "question": "<specific question to resolve it>"}}, ...]
 }}
 
 Rules:
 - overall_score reflects the fraction of inclusion criteria met (0.0 if none are met)
 - Set hard_exclusion to true only when the patient clearly meets an exclusion criterion
 - When information is missing, classify the criterion as uncertain, not failed
-- If hard_exclusion is true, set overall_score to 0.0"""
+- If hard_exclusion is true, set overall_score to 0.0
+- clarifying_questions must have exactly one entry per uncertain criterion; empty array if uncertain_criteria is empty"""
 
 
 def _patient_profile_to_text(profile: PatientProfile) -> str:
@@ -256,7 +258,7 @@ def generate_clarifying_questions(
     )
     try:
         msg = client.messages.create(
-            model=PRIMARY_MODEL,
+            model=FAST_MODEL,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -295,7 +297,7 @@ class ClaudeMatcher:
 
         score = compute_match_score(overall_score, hard_exclusion)
         potential = compute_potential_score(met_criteria, uncertain_criteria, failed_criteria)
-        clarifying_questions = generate_clarifying_questions(self.client, uncertain_criteria)
+        clarifying_questions = result_dict.get("clarifying_questions", [])
 
         return MatchResult(
             trial=trial,
