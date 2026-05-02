@@ -37,3 +37,11 @@ trialmatch/results/ckpt_*.json
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 *.log
+
+# ── Vercel ───────────────────────────────────────────────────────────────────
+.vercel
+
+# ── Proposal artifacts (local only) ──────────────────────────────────────────
+curling_ryan_*.pdf
+curling_ryan_*.pptx
+results/
