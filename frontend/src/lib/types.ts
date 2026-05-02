@@ -8,15 +8,22 @@ export interface PatientProfileOut {
   performance_status: string | null
 }
 
+export interface ClarifyingQuestion {
+  criterion: string
+  question: string
+}
+
 export interface TrialMatchOut {
   rank: number
   nct_id: string
   title: string
   phase: string | null
   overall_score: number
+  potential_score: number
   met_criteria: string[]
   failed_criteria: string[]
   uncertain_criteria: string[]
+  clarifying_questions: ClarifyingQuestion[]
   hard_exclusion: boolean
   exclusion_reason: string | null
   explanation: string

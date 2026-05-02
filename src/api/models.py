@@ -25,15 +25,22 @@ class PatientProfileOut(BaseModel):
     performance_status: Optional[str]
 
 
+class ClarifyingQuestion(BaseModel):
+    criterion: str
+    question: str
+
+
 class TrialMatchOut(BaseModel):
     rank: int
     nct_id: str
     title: str
     phase: Optional[str]
     overall_score: float = Field(..., ge=0.0, le=1.0)
+    potential_score: float = Field(0.0, ge=0.0, le=1.0)
     met_criteria: list[str]
     failed_criteria: list[str]
     uncertain_criteria: list[str]
+    clarifying_questions: list[ClarifyingQuestion] = []
     hard_exclusion: bool
     exclusion_reason: Optional[str]
     explanation: Optional[str]

@@ -153,16 +153,51 @@ export default function TrialCard({ trial }: Props) {
           </div>
         )}
 
+        {/* Uncertain criteria — expandable clarification panel */}
+        {trial.uncertain_criteria.length > 0 && (
+          <details className="ml-9 mb-3 group">
+            <summary className="flex items-center gap-2 cursor-pointer list-none">
+              <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-100 select-none">
+                ? {trial.uncertain_criteria.length} uncertain
+              </span>
+              {trial.potential_score > trial.overall_score && (
+                <span className="text-xs text-slate-500">
+                  Could reach <span className="font-semibold text-amber-600">{Math.round(trial.potential_score * 100)}%</span> if resolved
+                </span>
+              )}
+              <svg
+                className="w-3 h-3 text-slate-400 ml-auto transition-transform group-open:rotate-180"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-2 space-y-2 pl-1">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Questions that would resolve uncertainty
+              </p>
+              {trial.clarifying_questions.length > 0
+                ? trial.clarifying_questions.map((q, i) => (
+                    <div key={i} className="p-2.5 bg-amber-50 rounded-lg border border-amber-100">
+                      <p className="text-xs text-slate-500 mb-1">{q.criterion}</p>
+                      <p className="text-sm text-slate-800 font-medium">→ {q.question}</p>
+                    </div>
+                  ))
+                : trial.uncertain_criteria.map((c, i) => (
+                    <div key={i} className="p-2.5 bg-amber-50 rounded-lg border border-amber-100">
+                      <p className="text-sm text-slate-700">{c}</p>
+                    </div>
+                  ))
+              }
+            </div>
+          </details>
+        )}
+
         {/* Footer: criteria counts + link */}
         <div className="flex items-center gap-2 pt-3 border-t border-slate-100 ml-9">
           {trial.met_criteria.length > 0 && (
             <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
               ✓ {trial.met_criteria.length} met
-            </span>
-          )}
-          {trial.uncertain_criteria.length > 0 && (
-            <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-100">
-              ? {trial.uncertain_criteria.length} uncertain
             </span>
           )}
           {trial.failed_criteria.length > 0 && (

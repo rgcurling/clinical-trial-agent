@@ -12,7 +12,7 @@ import time
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.api.models import HealthResponse, MatchRequest, MatchResponse, PatientProfileOut, TrialMatchOut
+from src.api.models import ClarifyingQuestion, HealthResponse, MatchRequest, MatchResponse, PatientProfileOut, TrialMatchOut
 from src.data.clinicaltrials_api import ClinicalTrialsAPI
 
 # ── Resolve trialmatch package path once at import time ───────────────────────
@@ -131,9 +131,14 @@ async def match_patient(body: MatchRequest, background_tasks: BackgroundTasks, r
             title=mr.trial.title,
             phase=mr.trial.phase,
             overall_score=mr.overall_score,
+            potential_score=mr.potential_score,
             met_criteria=mr.met_criteria,
             failed_criteria=mr.failed_criteria,
             uncertain_criteria=mr.uncertain_criteria,
+            clarifying_questions=[
+                ClarifyingQuestion(criterion=q.get("criterion", ""), question=q.get("question", ""))
+                for q in (mr.clarifying_questions or [])
+            ],
             hard_exclusion=mr.hard_exclusion,
             exclusion_reason=mr.exclusion_reason,
             explanation=card.get("card_text") if card else None,
