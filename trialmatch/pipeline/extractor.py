@@ -12,7 +12,7 @@ from typing import Optional
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY, PRIMARY_MODEL
+from config import ANTHROPIC_API_KEY, FAST_MODEL
 from pipeline.models import PatientProfile
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ def _extract_via_llm(text: str) -> dict:
     prompt = _LLM_EXTRACTION_PROMPT.format(text=text)
 
     message = client.messages.create(
-        model=PRIMARY_MODEL,
+        model=FAST_MODEL,
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -70,7 +70,7 @@ def _extract_via_llm(text: str) -> dict:
             "Return ONLY the corrected JSON with no other text:\n\n" + raw
         )
         repair_msg = client.messages.create(
-            model=PRIMARY_MODEL,
+            model=FAST_MODEL,
             max_tokens=512,
             messages=[{"role": "user", "content": repair_prompt}],
         )

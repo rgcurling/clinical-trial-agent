@@ -195,19 +195,16 @@ class TestClaudeMatcher(unittest.TestCase):
             "hard_exclusion": False,
             "exclusion_reason": None,
             "reasoning": "Uncertain about diagnosis.",
+            "clarifying_questions": [
+                {"criterion": "Diagnosis of non-small cell lung cancer",
+                 "question": "Can you confirm the histological diagnosis of NSCLC?"}
+            ],
         })
-        clarify_response = json.dumps([
-            {"criterion": "Diagnosis of non-small cell lung cancer",
-             "question": "Can you confirm the histological diagnosis of NSCLC?"}
-        ])
 
-        mock_msg_match = MagicMock()
-        mock_msg_match.content = [MagicMock(text=uncertain_response)]
-        mock_msg_clarify = MagicMock()
-        mock_msg_clarify.content = [MagicMock(text=clarify_response)]
-
+        mock_msg = MagicMock()
+        mock_msg.content = [MagicMock(text=uncertain_response)]
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = [mock_msg_match, mock_msg_clarify]
+        mock_client.messages.create.return_value = mock_msg
         mock_anthropic.return_value = mock_client
 
         matcher = ClaudeMatcher()

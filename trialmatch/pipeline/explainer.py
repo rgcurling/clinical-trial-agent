@@ -10,7 +10,7 @@ import logging
 import anthropic
 import textstat
 
-from config import ANTHROPIC_API_KEY, PRIMARY_MODEL, TARGET_FK_GRADE
+from config import ANTHROPIC_API_KEY, FAST_MODEL, PRIMARY_MODEL, TARGET_FK_GRADE
 from pipeline.models import MatchResult
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def generate_trial_card(match: MatchResult) -> str:
         logger.info(f"[{match.trial.nct_id}] Simplifying (FK {fk_grade:.1f} > {TARGET_FK_GRADE})")
         simplify_prompt = _SIMPLIFY_PROMPT.format(fk_grade=fk_grade, text=card_text)
         simplify_msg = client.messages.create(
-            model=PRIMARY_MODEL,
+            model=FAST_MODEL,
             max_tokens=1024,
             messages=[{"role": "user", "content": simplify_prompt}],
         )

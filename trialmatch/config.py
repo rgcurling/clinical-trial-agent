@@ -7,6 +7,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", None)
 
 PRIMARY_MODEL = "claude-sonnet-4-20250514"
+FAST_MODEL = "claude-haiku-4-5-20251001"
 BASELINE_MODEL = "gpt-4o"
 
 CLINICALTRIALS_BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
