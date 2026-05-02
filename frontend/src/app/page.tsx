@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { matchTrials } from '@/lib/api'
 import type { MatchRequest, MatchResponse } from '@/lib/types'
 import LoadingState from '@/components/LoadingState'
@@ -233,22 +234,17 @@ export default function Page() {
 }
 
 function Header() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
   return (
-    <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10">
-      <div className="max-w-2xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <span className="font-bold text-slate-900">TrialMatch</span>
-          <span className="text-slate-400 text-sm font-normal">AI</span>
-        </div>
-        <span className="text-xs text-slate-400 font-mono hidden sm:block truncate max-w-xs">
-          {apiUrl}
-        </span>
+    <header className="bg-white border-b border-slate-200 px-4 py-2 sticky top-0 z-10">
+      <div className="max-w-2xl mx-auto flex items-center">
+        <Image
+          src="/logo.png"
+          alt="Clinical Trial Agent"
+          width={120}
+          height={48}
+          className="object-contain"
+          priority
+        />
       </div>
     </header>
   )
