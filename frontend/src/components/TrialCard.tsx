@@ -193,18 +193,68 @@ export default function TrialCard({ trial }: Props) {
           </details>
         )}
 
-        {/* Footer: criteria counts + link */}
-        <div className="flex items-center gap-2 pt-3 border-t border-slate-100 ml-9">
-          {trial.met_criteria.length > 0 && (
-            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-              ✓ {trial.met_criteria.length} met
-            </span>
-          )}
-          {trial.failed_criteria.length > 0 && (
-            <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded border border-red-100">
-              ✗ {trial.failed_criteria.length} failed
-            </span>
-          )}
+        {/* Met criteria — expandable */}
+        {trial.met_criteria.length > 0 && (
+          <details className="ml-9 mb-3 group">
+            <summary className="flex items-center gap-2 cursor-pointer list-none">
+              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 select-none">
+                ✓ {trial.met_criteria.length} met
+              </span>
+              <svg
+                className="w-3 h-3 text-slate-400 ml-auto transition-transform group-open:rotate-180"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-2 space-y-1.5 pl-1">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Criteria met
+              </p>
+              {trial.met_criteria.map((c, i) => (
+                <div key={i} className="flex items-start gap-2 p-2.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                  <svg className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <p className="text-sm text-slate-700">{c}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* Failed criteria — expandable */}
+        {trial.failed_criteria.length > 0 && (
+          <details className="ml-9 mb-3 group">
+            <summary className="flex items-center gap-2 cursor-pointer list-none">
+              <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded border border-red-100 select-none">
+                ✗ {trial.failed_criteria.length} failed
+              </span>
+              <svg
+                className="w-3 h-3 text-slate-400 ml-auto transition-transform group-open:rotate-180"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-2 space-y-1.5 pl-1">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Criteria not met
+              </p>
+              {trial.failed_criteria.map((c, i) => (
+                <div key={i} className="flex items-start gap-2 p-2.5 bg-red-50 rounded-lg border border-red-100">
+                  <svg className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <p className="text-sm text-slate-700">{c}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* Footer: link */}
+        <div className="flex items-center pt-3 border-t border-slate-100 ml-9">
           <div className="flex-1" />
           <a
             href={trial.trial_url}
