@@ -13,12 +13,12 @@ I need help creating a professional slide deck for my MS Milestone 3 (IU S553) p
 TrialMatch AI takes a free-text patient clinical note and returns a ranked list of relevant recruiting clinical trials with plain-English eligibility explanations written at an 8th-grade reading level.
 
 **Pipeline:**
-1. Patient note → Claude extracts structured profile (age, conditions, biomarkers, stage, medications)
+1. Patient note → **Claude Haiku** extracts structured profile (age, conditions, biomarkers, stage, medications)
 2. ClinicalTrials.gov API fetches up to 50 live recruiting trials; BiomedBERT (PubMedBERT sentence embeddings) re-ranks them by semantic similarity to the patient profile *(TREC/M3 eval mode: BiomedBERT retrieves directly from the 26,148-trial static corpus)*
-3. Claude (Agent 1) evaluates inclusion/exclusion criteria per trial → eligibility score 0–1
+3. **Claude Sonnet** (Agent 1) evaluates inclusion/exclusion criteria per trial → eligibility score 0–1 + clarifying questions (combined in one call)
 4. GPT-4o (Agent 2) independently reviews each assessment → accepts, overrides, or flags uncertain
 5. Resolver merges both agents; hard-exclusion filter removes ineligible trials
-6. Explainer generates patient-facing cards (FK grade ≤ 8 target)
+6. Explainer generates patient-facing cards (FK grade ≤ 8 target); **Haiku** rewrites if readability target is missed
 
 ---
 
@@ -73,7 +73,7 @@ Patient Note (free text)
         │
         ▼
 ┌─────────────────────┐
-│  Profile Extractor  │  Claude: age, conditions, biomarkers, stage, meds
+│  Profile Extractor  │  Claude Haiku: age, conditions, biomarkers, stage, meds
 └──────────┬──────────┘
            │
            ▼
@@ -93,7 +93,7 @@ Patient Note (free text)
     ▼             ▼
 ┌────────┐   ┌──────────┐
 │Agent 1 │   │ Agent 2  │
-│Claude  │──▶│ GPT-4o   │  Independent eligibility review
+│Sonnet  │──▶│ GPT-4o   │  Independent eligibility review
 │Matcher │   │ Critic   │
 └────────┘   └────┬─────┘
     │              │
@@ -108,7 +108,7 @@ Patient Note (free text)
     └──────┬──────┘
            ▼
     ┌─────────────┐
-    │  Explainer  │  FK-controlled plain-English patient card
+    │  Explainer  │  FK-controlled plain-English patient card (Haiku simplification pass)
     └─────────────┘
            │
            ▼
@@ -123,6 +123,8 @@ Patient Note (free text)
 - **Containerized** — multi-stage Docker build, <1GB image, <15s cold start
 - **Google Cloud Run** — serverless, scales to zero, ~$0/month at low traffic
 - **Live data** — ClinicalTrials.gov API v2 fetches live recruiting trials; BiomedBERT then re-ranks them by semantic similarity before Claude eligibility assessment (not the static TREC corpus)
+- **Two-tier model design** — Claude Haiku for extraction, criteria parsing, and readability simplification; Claude Sonnet reserved for per-trial eligibility matching (~75% cost reduction vs. single-model approach, ~$0.06–0.08/patient)
+- **Clarifying questions included at no extra cost** — folded into the Sonnet match call, eliminating a separate API round-trip per trial
 - **32 automated tests** — 19 pipeline unit tests + 13 API integration tests, all passing
 
 ---
