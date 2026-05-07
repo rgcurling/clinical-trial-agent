@@ -14,27 +14,32 @@ type AppState =
   | { status: 'success'; data: MatchResponse }
   | { status: 'error'; message: string }
 
-const SAMPLE_NOTE =
-  `58-year-old male with Stage IIIB non-small cell lung cancer (NSCLC).
-EGFR mutation negative, PD-L1 expression 45%.
-Previously treated with carboplatin and paclitaxel (2 cycles, completed 6 months ago).
-Currently ECOG performance status 1. Located in Indianapolis, IN.
-No prior immunotherapy. No active brain metastases.`
+function buildPatientText(condition: string, age: string, notes: string): string {
+  const parts: string[] = []
+  if (age) parts.push(`${age}-year-old`)
+  parts.push(`with ${condition}`)
+  if (notes.trim()) parts.push(`Notes: ${notes.trim()}`)
+  return parts.join(' ') + '.'
+}
 
 export default function Page() {
   const [appState, setAppState] = useState<AppState>({ status: 'idle' })
-  const [patientText, setPatientText] = useState('')
+  const [condition, setCondition] = useState('')
+  const [age, setAge] = useState('')
+  const [notes, setNotes] = useState('')
   const [location, setLocation] = useState('')
-  const [maxTrials, setMaxTrials] = useState(5)
+  const [maxTrials, setMaxTrials] = useState(3)
   const [useCritic, setUseCritic] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!patientText.trim()) return
+    if (!condition.trim()) return
     setAppState({ status: 'loading' })
 
+    const patientText = buildPatientText(condition.trim(), age.trim(), notes)
+
     const request: MatchRequest = {
-      patient_text: patientText.trim(),
+      patient_text: patientText,
       max_trials: maxTrials,
       use_critic: useCritic,
     }
@@ -122,7 +127,7 @@ export default function Page() {
           {data.matches.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
               <p className="text-sm text-slate-500">
-                No matching trials found. Try broadening the patient note or removing the location filter.
+                No matching trials found. Try broadening your search or removing the location filter.
               </p>
             </div>
           ) : (
@@ -134,7 +139,7 @@ export default function Page() {
           )}
 
           <p className="text-center text-xs text-slate-400 mt-8">
-            Not for clinical decision-making. Results are AI-generated and must be reviewed by a qualified clinician.
+            Research demo only — not for clinical decision-making. Results must be reviewed by a qualified clinician.
           </p>
         </div>
       </div>
@@ -148,30 +153,45 @@ export default function Page() {
       <div className="max-w-xl mx-auto px-4 py-10">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-3">
-            Match patients to clinical trials
+            Clinical Trial AI Agent
           </h1>
           <p className="text-slate-500 text-sm leading-relaxed">
-            Paste a clinical note. AI extracts the patient profile, searches recruiting trials,
-            evaluates eligibility criteria, and returns plain-English explanations.
+            Enter a condition and we'll match you to actively recruiting trials.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Patient Clinical Note <span className="text-red-500">*</span>
+              Condition <span className="text-red-500">*</span>
             </label>
-            <textarea
-              value={patientText}
-              onChange={(e) => setPatientText(e.target.value)}
-              placeholder={SAMPLE_NOTE}
+            <input
+              type="text"
+              value={condition}
+              onChange={(e) => setCondition(e.target.value)}
+              placeholder="e.g. lung cancer, Type 2 diabetes, Crohn's disease"
               required
-              rows={7}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono leading-relaxed"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Age <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="number"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                placeholder="e.g. 58"
+                min={1}
+                max={120}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Location <span className="text-slate-400 font-normal">(optional)</span>
@@ -184,21 +204,34 @@ export default function Page() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Max Results
-              </label>
-              <select
-                value={maxTrials}
-                onChange={(e) => setMaxTrials(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {[1, 3, 5, 10, 15, 20].map((n) => (
-                  <option key={n} value={n}>{n} trial{n !== 1 ? 's' : ''}</option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Additional notes <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. prior treatments tried, stage, biomarkers, anything else relevant"
+              rows={3}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y leading-relaxed"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Max Results
+            </label>
+            <select
+              value={maxTrials}
+              onChange={(e) => setMaxTrials(Number(e.target.value))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {[1, 3, 5].map((n) => (
+                <option key={n} value={n}>{n} trial{n !== 1 ? 's' : ''}</option>
+              ))}
+            </select>
           </div>
 
           <label className="flex items-start gap-3 cursor-pointer">
@@ -216,18 +249,18 @@ export default function Page() {
             </div>
           </label>
 
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
+            <span className="font-semibold text-slate-700">Research demo only.</span> Not medical advice — results must be reviewed by a qualified clinician before acting on them.
+          </p>
+
           <button
             type="submit"
-            disabled={!patientText.trim()}
+            disabled={!condition.trim()}
             className="w-full py-2.5 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Find Matching Trials
+            Search Trials
           </button>
         </form>
-
-        <p className="text-center text-xs text-slate-400 mt-4">
-          Not for clinical decision-making · Results must be reviewed by a qualified clinician
-        </p>
       </div>
     </div>
   )
@@ -238,10 +271,10 @@ function Header() {
     <header className="bg-white border-b border-slate-200 px-4 py-2 sticky top-0 z-10">
       <div className="max-w-2xl mx-auto flex items-center">
         <Image
-          src="/logo.png"
+          src="/logo-robot.png"
           alt="Clinical Trial Agent"
-          width={120}
-          height={48}
+          width={96}
+          height={96}
           className="object-contain"
           priority
         />
